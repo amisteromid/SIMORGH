@@ -1,5 +1,7 @@
 # SIMORGH
 
+![Ensemble Aggregation](Birds.gif)
+
 ## **Installation**
 To set up the conda environment:
 
