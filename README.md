@@ -2,6 +2,16 @@
 
 ![Ensemble Aggregation](Birds.gif)
 
+## Table of Contents: 
+- [The workflow](#The-workflow)
+- [Installation](#Installation)
+- [Training the model](#Training-the-model)
+- [Running inference](#Running-inference)
+- [License](#License)
+- [Acknowledgement](#Acknowledgement)
+- [Citation](#Citation)
+
+
 ## **Installation**
 To set up the conda environment:
 
