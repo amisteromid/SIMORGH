@@ -147,7 +147,7 @@ def write_pdb_with_bfactor(pdb_file, predictions, output_file=None):
     io.set_structure(structure)
     io.save(output_file)
 
-'''
+
 if __name__ == '__main__':
     device = torch.device(device)
     # Setup models
@@ -333,7 +333,7 @@ if __name__ == '__main__':
     print(f"model1 total: {global_stats['model1_s']:.4f}s | per-frame: {global_stats['model1_s']/max(total_frames,1):.6f}s")
     print(f"model2 total: {global_stats['model2_s']:.4f}s | per-PDB-call avg: {global_stats['model2_s']/max(global_counts['model2_calls'],1):.6f}s")
     print(f"END-TO-END total: {global_stats['pdb_total_s']:.4f}s")
-     
+'''  
         
         
         
