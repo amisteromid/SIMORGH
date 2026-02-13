@@ -97,7 +97,7 @@ def get_xyz(pdb_file):
 def get_k_nearest_neighbors(xyz_ca, k):
     """Get k nearest neighbors indices for each residue"""
     n_residues = xyz_ca.shape[0]
-    k=min(k,n_residues)
+    k=min(k,n_residues-1)
     # Pairwise distances
     diff = xyz_ca[:, np.newaxis, :] - xyz_ca[np.newaxis, :, :]
     distances = np.linalg.norm(diff, axis=-1)
@@ -186,7 +186,7 @@ if __name__ == '__main__':
         emb_list = torch.stack(emb_list, dim=1)
         # evalluate with setmodeli
         z = model2.forward(emb_list)
-        write_pdb_with_bfactor(pdb_file, torch.sigmoid(z).cpu(), pdb_file.replace('.pdb', '_predicted.pdb'))
+        write_pdb_with_bfactor(pdb_file, torch.sigmoid(z).squeeze(-1).cpu(), pdb_file.replace('.pdb', '_predicted.pdb'))
 '''
 
 import time
