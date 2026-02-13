@@ -97,7 +97,7 @@ def get_xyz(pdb_file):
 def get_k_nearest_neighbors(xyz_ca, k):
     """Get k nearest neighbors indices for each residue"""
     n_residues = xyz_ca.shape[0]
-    k=max(k,n_residues)
+    k=min(k,n_residues)
     # Pairwise distances
     diff = xyz_ca[:, np.newaxis, :] - xyz_ca[np.newaxis, :, :]
     distances = np.linalg.norm(diff, axis=-1)
