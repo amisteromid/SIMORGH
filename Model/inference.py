@@ -147,7 +147,6 @@ def write_pdb_with_bfactor(pdb_file, predictions, output_file=None):
     io.set_structure(structure)
     io.save(output_file)
 
-
 if __name__ == '__main__':
     device = torch.device(device)
     # Setup models
@@ -159,9 +158,17 @@ if __name__ == '__main__':
     ckpt2 = torch.load(f"model_{model2_num}.pt", map_location=device, weights_only=True)
     model2.load_state_dict(ckpt2["model_state_dict"] if "model_state_dict" in ckpt2 else ckpt2)
     model2.eval()
-    
-    
-    for pdb_file in tqdm(glob(os.path.join("/home/omokhtar/Desktop/SIMORGH/IDR", "*.pdb"))):
+
+
+    sel = np.genfromtxt('apo_test_ids.txt', dtype=np.dtype('U'))
+    for pdb_file in tqdm(glob(os.path.join("/home/omokhtari/SIMORGH/Model/MD_clusters_chains_BB", "*.pdb"))):
+    #for pdb_file in tqdm(glob(os.path.join("/srv/storage/capsid@srv-data2.nancy.grid5000.fr/omokhtari/bbflow_data/cryptobench_removed_extra_chains/", "*.pdb"))):
+        #if os.path.basename(pdb_file)[:4] not in sel:
+        #    continue
+        name = os.path.basename(pdb_file).replace('.pdb', '_predicted.pdb')
+        out_file = os.path.join("predictions_MD", name)
+        if os.path.exists(out_file):
+            continue
         # Setup data
         seq, xyz = get_xyz(pdb_file)
         if seq==None: continue
@@ -186,155 +193,4 @@ if __name__ == '__main__':
         emb_list = torch.stack(emb_list, dim=1)
         # evalluate with setmodeli
         z = model2.forward(emb_list)
-        write_pdb_with_bfactor(pdb_file, torch.sigmoid(z).squeeze(-1).cpu(), pdb_file.replace('.pdb', '_predicted.pdb'))
-'''
-
-import time
-from collections import defaultdict
-import torch
-
-def timed(fn, device):
-    """
-    Returns (result, elapsed_seconds) with correct CUDA sync if on GPU.
-    """
-    if device.type == "cuda":
-        torch.cuda.synchronize()
-    t0 = time.perf_counter()
-    out = fn()
-    if device.type == "cuda":
-        torch.cuda.synchronize()
-    t1 = time.perf_counter()
-    return out, (t1 - t0)
-
-if __name__ == '__main__':
-    device = torch.device(device)
-
-    # Setup models
-    model1 = Model(config_model).to(device)
-    ckpt1 = torch.load(f"model_{model1_num}.pt", map_location=device, weights_only=True)
-    model1.load_state_dict(ckpt1["model_state_dict"] if "model_state_dict" in ckpt1 else ckpt1)
-    model1.eval()
-
-    model2 = SetModel(config_model).to(device)
-    ckpt2 = torch.load(f"model_{model2_num}.pt", map_location=device, weights_only=True)
-    model2.load_state_dict(ckpt2["model_state_dict"] if "model_state_dict" in ckpt2 else ckpt2)
-    model2.eval()
-
-    # Optional: faster inference on Ampere+ (safe for inference)
-    torch.set_float32_matmul_precision("high")
-
-    global_stats = defaultdict(float)
-    global_counts = defaultdict(int)
-
-    for pdb_file in tqdm(glob(os.path.join("/home/omokhtar/Desktop/SIMORGH/IDR", "*.pdb"))):
-        pdb_stats = defaultdict(float)
-        pdb_counts = defaultdict(int)
-
-        _, t_pdb_total = timed(lambda: None, device)  # just to define structure
-        if device.type == "cuda":
-            torch.cuda.synchronize()
-        pdb_t0 = time.perf_counter()
-
-        # Setup data
-        seq, xyz = get_xyz(pdb_file)
-        if seq is None:
-            continue
-        seq = torch.tensor([aa_idx[r] for r in seq], dtype=torch.long)
-
-        emb_list = []
-
-        for frame_idx in tqdm(range(len(xyz)), leave=False):
-            # --- Feature extraction timing (CPU mostly) ---
-            (R, D, SCOV, SCOD, nn_ids), t_feat = timed(
-                lambda: extract_topology_knn(xyz, frame_idx=frame_idx, k=k),
-                device=torch.device("cpu")  # CPU timing; no cuda sync needed
-            )
-            pdb_stats["feat_extract_s"] += t_feat
-            pdb_counts["frames"] += 1
-
-            # --- Spherical harmonics timing (can be CPU or GPU depending on your tensors) ---
-            def sh_fn():
-                R_t = o3.spherical_harmonics('1x1e+1x2e', torch.tensor(R), normalize=True, normalization='component')
-                SCOD_t = o3.spherical_harmonics('1x1e+1x2e', torch.tensor(SCOD), normalize=True, normalization='component')
-                SCOV_t = o3.spherical_harmonics('1x1e+1x2e', torch.tensor(SCOV), normalize=True, normalization='component')
-                return R_t, SCOD_t, SCOV_t
-
-            (R_sh, SCOD_sh, SCOV_sh), t_sh = timed(sh_fn, device=torch.device("cpu"))
-            pdb_stats["sph_harm_s"] += t_sh
-
-            # Edge
-            num_nodes, k_ = nn_ids.shape
-            edge_src = torch.arange(num_nodes).unsqueeze(1).repeat(1, k_).flatten()
-            edge_dst = torch.tensor(nn_ids.flatten())
-
-            # --- model1 timing (THIS is what you asked for) ---
-            with torch.no_grad():
-                def m1_fn():
-                    return model1(
-                        [[seq.to(device), SCOV_sh.to(device)],
-                         [SCOD_sh.to(device), R_sh.to(device), torch.tensor(D).to(device)]],
-                        edge_src.to(device),
-                        edge_dst.to(device),
-                        get_mor=True
-                    )
-
-                emb, t_m1 = timed(m1_fn, device)
-                pdb_stats["model1_s"] += t_m1
-                pdb_counts["model1_calls"] += 1
-
-            emb_list.append(emb)
-
-        # Stack timing (can be non-trivial)
-        emb_list, t_stack = timed(lambda: torch.stack(emb_list, dim=1), device)
-        pdb_stats["stack_s"] += t_stack
-
-        # --- model2 timing ---
-        with torch.no_grad():
-            z, t_m2 = timed(lambda: model2.forward(emb_list), device)
-        pdb_stats["model2_s"] += t_m2
-        pdb_counts["model2_calls"] += 1
-
-        # Writing output timing (CPU / IO)
-        z_cpu, t_to_cpu = timed(lambda: torch.sigmoid(z).detach().cpu(), device=torch.device("cpu"))
-        pdb_stats["sigmoid_to_cpu_s"] += t_to_cpu
-
-        _, t_write = timed(
-            lambda: write_pdb_with_bfactor(pdb_file, z_cpu, pdb_file.replace('.pdb', '_predicted.pdb')),
-            device=torch.device("cpu")
-        )
-        pdb_stats["write_s"] += t_write
-
-        if device.type == "cuda":
-            torch.cuda.synchronize()
-        pdb_total = time.perf_counter() - pdb_t0
-        pdb_stats["pdb_total_s"] = pdb_total
-
-        # Print per-PDB summary
-        nframes = pdb_counts["frames"]
-        print(f"\n=== {os.path.basename(pdb_file)} ===")
-        print(f"Frames: {nframes}")
-        print(f"model1 total: {pdb_stats['model1_s']:.4f}s  | per-frame: {pdb_stats['model1_s']/max(nframes,1):.6f}s")
-        print(f"model2 total: {pdb_stats['model2_s']:.4f}s")
-        print(f"feature extract: {pdb_stats['feat_extract_s']:.4f}s | sph harm: {pdb_stats['sph_harm_s']:.4f}s")
-        print(f"stack: {pdb_stats['stack_s']:.4f}s | write: {pdb_stats['write_s']:.4f}s")
-        print(f"END-TO-END: {pdb_stats['pdb_total_s']:.4f}s\n")
-
-        # Accumulate global stats
-        for k_, v in pdb_stats.items():
-            global_stats[k_] += v
-        for k_, v in pdb_counts.items():
-            global_counts[k_] += v
-
-    # Global summary
-    total_frames = global_counts["frames"]
-    print("\n\n===== GLOBAL SUMMARY =====")
-    print(f"PDBs processed: {len(glob(os.path.join('/home/omokhtar/Desktop/SIMORGH/IDR', '*.pdb')))} (including skipped in count above may differ)")
-    print(f"Total frames: {total_frames}")
-    print(f"model1 total: {global_stats['model1_s']:.4f}s | per-frame: {global_stats['model1_s']/max(total_frames,1):.6f}s")
-    print(f"model2 total: {global_stats['model2_s']:.4f}s | per-PDB-call avg: {global_stats['model2_s']/max(global_counts['model2_calls'],1):.6f}s")
-    print(f"END-TO-END total: {global_stats['pdb_total_s']:.4f}s")
-'''  
-        
-        
-        
-        
+        write_pdb_with_bfactor(pdb_file, torch.sigmoid(z).cpu(), out_file)
