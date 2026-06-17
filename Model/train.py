@@ -15,7 +15,7 @@ from scoring import bc_scoring, bc_score_names, nanmean
 
 model_num = argv[1]
 
-wandb.login(key='aa3d83b08d1587884348defb38d3143f893e2b96')
+wandb.login(key='')
 
 class WarmUpCosineAnnealingLR(_LRScheduler):
     def __init__(self, optimizer, T_max, T_warmup, eta_min=0, last_epoch=-1):
