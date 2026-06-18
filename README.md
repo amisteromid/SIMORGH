@@ -6,7 +6,7 @@
 - [The workflow](#The-workflow)
 - [Installation](#Installation)
 - [Training the model](#Training-the-model)
-- [Running inference](#Running-inference)
+- [Running inference](#Inference)
 - [License](#License)
 - [Acknowledgement](#Acknowledgement)
 - [Citation](#Citation)
@@ -35,5 +35,17 @@ https://doi.org/10.5281/zenodo.14833854
    - ``--min-sequence-length``:  Minimum sequence length to process (integer).
    - ``--num--workers``:  number of worker processes for data loading (integer).
 ```bash
-python3 build_dataset.py --input /path/to/structures --output dataset.h5 --min-sequence-length 10 --num-workers 4
+python3 build_dataset.py --input /path/to/structures --output dataset.h5 --num-workers 4
 ```
+
+
+## Inference
+
+After setting up the Conda environment, inference can be performed using the `inference.py` script.
+
+The pretrained models used for CryptoBench are:
+- `model_4.pt` — geometric encoding  
+- `model_44.pt` — set aggregation  
+
+Alternatively, you can run inference directly using the Google Colab notebook:  
+[CryptoBench Inference (Colab)](https://colab.research.google.com/drive/1FSkESlIdVksg2d0eBlj0E1AmxI9Hc1bc#scrollTo=7sNBpIvPzRgU)
