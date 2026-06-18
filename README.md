@@ -8,7 +8,6 @@
 - [Training the model](#Training-the-model)
 - [Inference](#Inference)
 - [Licence](#Licence)
-- [Acknowledgement](#Acknowledgement)
 - [Citation](#Citation)
 
 
