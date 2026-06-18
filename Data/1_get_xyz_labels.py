@@ -270,8 +270,8 @@ def process_pdb_files_with_labels(pdb_directory, fasta_file, output_h5="protein_
     print(f"\nResults written to {output_h5}")
 
 if __name__ == "__main__":
-    pdb_directory = "/srv/storage/capsid@srv-data2.nancy.grid5000.fr/omokhtari/bbflow_data/all_structures"
-    fasta_file = "/srv/storage/capsid@srv-data2.nancy.grid5000.fr/omokhtari/bbflow_data/all_labels_final_crypto_added.fa"
-    output_h5 = "/srv/storage/capsid@srv-data2.nancy.grid5000.fr/omokhtari/bbflow_data/coords_labels.h5"
+    pdb_directory = "all_structures"
+    fasta_file = "all_labels_final_crypto_added.fa"
+    output_h5 = "coords_labels.h5"
     
     process_pdb_files_with_labels(pdb_directory, fasta_file, output_h5=output_h5)
