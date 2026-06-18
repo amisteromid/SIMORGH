@@ -7,7 +7,7 @@
 - [Installation](#Installation)
 - [Training the model](#Training-the-model)
 - [Inference](#Inference)
-- [License](#License)
+- [Licence](#Licence)
 - [Acknowledgement](#Acknowledgement)
 - [Citation](#Citation)
 
@@ -50,7 +50,7 @@ The pretrained models used for CryptoBench are:
 Alternatively, you can run inference directly using the Google Colab notebook:  
 [CryptoBench Inference (Colab)](https://colab.research.google.com/drive/1FSkESlIdVksg2d0eBlj0E1AmxI9Hc1bc#scrollTo=7sNBpIvPzRgU)
 
-## **License**
+## **Licence**
 
 Copyright (c) 2026 Omid Mokhtari, Inria
 
