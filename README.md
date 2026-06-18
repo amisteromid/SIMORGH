@@ -6,7 +6,7 @@
 - [The workflow](#The-workflow)
 - [Installation](#Installation)
 - [Training the model](#Training-the-model)
-- [Running inference](#Inference)
+- [Inference](#Inference)
 - [License](#License)
 - [Acknowledgement](#Acknowledgement)
 - [Citation](#Citation)
@@ -39,7 +39,7 @@ python3 build_dataset.py --input /path/to/structures --output dataset.h5 --num-w
 ```
 
 
-## Inference
+## **Inference**
 
 After setting up the Conda environment, inference can be performed using the `inference.py` script.
 
@@ -49,3 +49,7 @@ The pretrained models used for CryptoBench are:
 
 Alternatively, you can run inference directly using the Google Colab notebook:  
 [CryptoBench Inference (Colab)](https://colab.research.google.com/drive/1FSkESlIdVksg2d0eBlj0E1AmxI9Hc1bc#scrollTo=7sNBpIvPzRgU)
+
+## **License**
+
+## **Citation**
