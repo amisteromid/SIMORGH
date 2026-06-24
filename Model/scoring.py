@@ -1,139 +1,45 @@
-"""
-scoring.py: Calculate scoring metrics
-Omid Mokhtari - Inria 2025
-This file is part of DynamicGT.
-Released under CC BY-NC-SA 4.0 License
-"""
+# Copyright (c) 2026 Omid Mokhtari
 
 import numpy as np
 import torch as pt
-from typing import Tuple, List
-from sklearn.metrics import roc_auc_score, average_precision_score
+from typing import Tuple
+from sklearn.metrics import (
+    confusion_matrix, accuracy_score, precision_score, recall_score,
+    f1_score, matthews_corrcoef, roc_auc_score, average_precision_score
+)
 
 
-bc_score_names = ['acc','ppv','npv','tpr','tnr','mcc','auc','std','PR','F1']
+bc_score_names = ['acc', 'ppv', 'npv', 'tpr', 'tnr', 'mcc', 'auc', 'std', 'PR', 'F1']
 
 
-def binary_classification_counts(y: pt.Tensor, y_pred: pt.Tensor) -> Tuple[pt.Tensor, pt.Tensor, pt.Tensor, pt.Tensor, pt.Tensor, pt.Tensor]:
-    true_positives = pt.sum(y_pred * y, dim=0)
-    true_negatives = pt.sum((1.0 - y_pred) * (1.0 - y), dim=0)
-    false_positives = pt.sum(y_pred * (1.0 - y), dim=0)
-    false_negatives = pt.sum((1.0 - y_pred) * y, dim=0)
-    
-    positives = pt.sum(y, dim=0)
-    negatives = pt.sum(1.0 - y, dim=0)
-    
-    return true_positives, true_negatives, false_positives, false_negatives, positives, negatives
+def bc_scoring(y_true: pt.Tensor, y_prob: pt.Tensor, threshold: float = 0.5) -> pt.Tensor:
+    y_true_np = y_true.cpu().numpy()   # (N, C)
+    y_prob_np = y_prob.cpu().numpy()   # (N, C)
+    n_classes = y_true_np.shape[1]
 
+    scores = np.full((10, n_classes), np.nan)
 
-def accuracy(TP: pt.Tensor, TN: pt.Tensor, FP: pt.Tensor, FN: pt.Tensor) -> pt.Tensor:
-    return (TP + TN) / (TP + TN + FP + FN)
+    for i in range(n_classes):
+        yt = y_true_np[:, i]
+        yp = y_prob_np[:, i]
+        yp_bin = (yp >= threshold).astype(int)
 
+        if len(np.unique(yt)) < 2:
+            continue
 
-def precision(TP: pt.Tensor, FP: pt.Tensor, P: pt.Tensor) -> pt.Tensor:
-    denominator = TP + FP # Avoid division by zero
-    valid_mask = denominator > 0
-    result = pt.ones_like(TP) * float('nan')
-    result[valid_mask] = TP[valid_mask] / denominator[valid_mask]
-    result[~(P > 0)] = float('nan')
-    return result
+        TN, FP, FN, TP = confusion_matrix(yt, yp_bin).ravel()
 
-def negative_predictive_value(TN: pt.Tensor, FN: pt.Tensor, N: pt.Tensor) -> pt.Tensor:
-    denominator = TN + FN
-    valid_mask = denominator > 0
-    result = pt.ones_like(TN) * float('nan')
-    result[valid_mask] = TN[valid_mask] / denominator[valid_mask]
-    result[~(N > 0)] = float('nan')
-    return result
+        acc  = accuracy_score(yt, yp_bin)
+        ppv  = precision_score(yt, yp_bin, zero_division=np.nan)
+        tpr  = recall_score(yt, yp_bin, zero_division=np.nan)
+        npv  = TN / (TN + FN) if (TN + FN) > 0 else np.nan
+        tnr  = TN / (TN + FP) if (TN + FP) > 0 else np.nan
+        mcc  = matthews_corrcoef(yt, yp_bin)
+        auc  = roc_auc_score(yt, yp)
+        std  = np.std(yp)
+        pr   = average_precision_score(yt, yp)
+        f1   = f1_score(yt, yp_bin, zero_division=np.nan)
 
+        scores[:, i] = [acc, ppv, npv, tpr, tnr, mcc, auc, std, pr, f1]
 
-def recall(TP: pt.Tensor, FN: pt.Tensor) -> pt.Tensor:
-    denominator = TP + FN
-    valid_mask = denominator > 0
-    result = pt.ones_like(TP) * float('nan')
-    result[valid_mask] = TP[valid_mask] / denominator[valid_mask]
-    return result
-
-
-def specificity(TN: pt.Tensor, FP: pt.Tensor) -> pt.Tensor:
-    denominator = TN + FP
-    valid_mask = denominator > 0
-    result = pt.ones_like(TN) * float('nan')
-    result[valid_mask] = TN[valid_mask] / denominator[valid_mask]
-    return result
-
-
-def matthews_correlation_coefficient(TP: pt.Tensor, TN: pt.Tensor, FP: pt.Tensor, FN: pt.Tensor) -> pt.Tensor:
-    numerator = (TP * TN) - (FP * FN)
-    denominator = pt.sqrt((TP + FP) * (TP + FN) * (TN + FP) * (TN + FN))
-
-    valid_mask = denominator > 0
-    result = pt.ones_like(TP) * float('nan')
-    result[valid_mask] = numerator[valid_mask] / denominator[valid_mask]
-    return result
-
-
-def roc_auc(y: pt.Tensor, y_prob: pt.Tensor, P: pt.Tensor, N: pt.Tensor) -> pt.Tensor:
-    valid_mask = (P > 0) & (N > 0)
-    result = pt.full_like(P, float('nan'), dtype=pt.float32)
-    if pt.any(valid_mask):
-        valid_indices = pt.where(valid_mask)[0]
-        y_valid = y[:, valid_indices].cpu().numpy()
-        y_prob_valid = y_prob[:, valid_indices].cpu().numpy()
-    
-        try:
-            auc_scores = np.array(roc_auc_score(y_valid, y_prob_valid, average=None))
-            result[valid_indices] = pt.from_numpy(auc_scores).float().to(y.device)
-        except ValueError as e:
-            print(f"ROC AUC calculation error: {e}")
-            
-    return result
-
-
-def precision_recall_auc(y: pt.Tensor, y_prob: pt.Tensor, P: pt.Tensor, N: pt.Tensor) -> pt.Tensor:
-    valid_mask = (P > 0) & (N > 0)
-    result = pt.full_like(P, float('nan'), dtype=pt.float32)
-    if pt.any(valid_mask):
-        valid_indices = pt.where(valid_mask)[0]
-        y_valid = y[:, valid_indices].cpu().numpy()
-        y_prob_valid = y_prob[:, valid_indices].cpu().numpy()
-        
-        try:
-            pr_auc_scores = np.array(average_precision_score(y_valid, y_prob_valid, average=None))
-            result[valid_indices] = pt.from_numpy(pr_auc_scores).float().to(y.device)
-        except ValueError as e:
-            print(f"PR AUC calculation error: {e}")
-            
-    return result
-
-def nanmean(x: pt.Tensor) -> pt.Tensor:
-    valid_count = pt.sum(~pt.isnan(x), dim=0)
-    return pt.nansum(x, dim=0) / pt.clamp(valid_count, min=1)  # Avoid division by zero
-
-
-def bc_scoring(y_true: pt.Tensor, y_prob: pt.Tensor) -> pt.Tensor:
-    # Threshold probabilities to get binary predictions
-    y_pred = (y_prob >= 0.5).float()
-
-    # Calculate basic classification counts
-    TP, TN, FP, FN, P, N = binary_classification_counts(y_true, y_pred)
-    
-    precision_score = precision(TP, FP, P)
-    recall_score = recall(TP, FN)
-    f1 = (2*precision_score*recall_score)/(precision_score+recall_score)
-
-    # Compute all metrics
-    scores = pt.stack([
-        accuracy(TP, TN, FP, FN),                    # Accuracy
-        precision_score,                             # Precision (PPV)
-        negative_predictive_value(TN, FN, N),        # NPV
-        recall_score,                                # Recall (TPR)
-        specificity(TN, FP),                         # Specificity (TNR)
-        matthews_correlation_coefficient(TP, TN, FP, FN),  # MCC
-        roc_auc(y_true, y_prob, P, N),               # ROC AUC
-        pt.std(y_prob, dim=0),                       # Standard deviation of predictions
-        precision_recall_auc(y_true, y_prob, P, N),   # PR AUC
-        f1                                           # F1
-    ])
-
-    return scores
+    return pt.from_numpy(scores).float().to(y_true.device)
