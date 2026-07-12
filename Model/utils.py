@@ -63,7 +63,8 @@ class Dataset(torch.utils.data.Dataset):
     def __init__(self, dataset_filepath):
         super(Dataset, self).__init__()
         self.dataset_filepath = dataset_filepath
-
+        self._hf = None
+        self._masked_indices = None
         with h5py.File(dataset_filepath, 'r') as hf:
             self.ID = np.array(hf["metadata/ID"]).astype(np.dtype('U'))
             self.size = np.array(hf["metadata/size"])
@@ -71,6 +72,11 @@ class Dataset(torch.utils.data.Dataset):
         # default selection mask
         self.m = np.ones(len(self.ID), dtype=bool)    
     
+    def _get_file(self):
+        if self._hf is None:
+            self._hf = h5py.File(self.dataset_filepath, 'r')
+        return self._hf
+
     def update_mask(self, m):
         self.m &= m # boolean vector with the size of whole dataset for masking
 
@@ -82,23 +88,29 @@ class Dataset(torch.utils.data.Dataset):
     def __len__(self):
         return np.sum(self.m)
 
+    def _get_masked_indices(self):
+        if self._masked_indices is None:
+            self._masked_indices = np.where(self.m)[0]
+        return self._masked_indices
+
     def __getitem__(self, k): # k is the indice of entry
-        masked_indices = np.where(self.m)[0]
+        masked_indices = self._get_masked_indices()
         key_index = masked_indices[k]
         key = self.ID[key_index]
 
-        with h5py.File(self.dataset_filepath, 'r') as hf:
-            hgrp_f = hf[f'data/features/{key}']
-            hgrp_l = hf[f'data/labels/{key}']
-            # Node features
-            seq = torch.tensor(np.array(hgrp_f['node/seq']))
-            SCOV = torch.tensor(np.array(hgrp_f['node/SCOV_ref']))
-            # Edge features
-            D = torch.tensor(np.array(hgrp_f['edge/D_ref']))
-            R = torch.tensor(np.array(hgrp_f['edge/R_ref']))
-            SCOD = torch.tensor(np.array(hgrp_f['edge/SCOD_ref']))
-            # Edge indices
-            nn_ids = torch.tensor(np.array(hgrp_f['nn_idx']))
-            # label
-            labels = torch.tensor(np.array(hgrp_l['labels']))
+        hf = self._get_file()
+
+        hgrp_f = hf[f'data/features/{key}']
+        hgrp_l = hf[f'data/labels/{key}']
+        # Node features
+        seq = torch.tensor(np.array(hgrp_f['node/seq']))
+        SCOV = torch.tensor(np.array(hgrp_f['node/SCOV_ref']))
+        # Edge features
+        D = torch.tensor(np.array(hgrp_f['edge/D_ref']))
+        R = torch.tensor(np.array(hgrp_f['edge/R_ref']))
+        SCOD = torch.tensor(np.array(hgrp_f['edge/SCOD_ref']))
+        # Edge indices
+        nn_ids = torch.tensor(np.array(hgrp_f['nn_idx']))
+        # label
+        labels = torch.tensor(np.array(hgrp_l['labels']))
         return seq, SCOV, nn_ids, D, R, SCOD, labels 
