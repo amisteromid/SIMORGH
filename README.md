@@ -47,7 +47,7 @@ The pretrained models used for CryptoBench are:
 - `model_44.pt` — set aggregation  
 
 Alternatively, you can run inference directly using the Google Colab notebook:  
-[CryptoBench Inference (Colab)](https://colab.research.google.com/drive/1FSkESlIdVksg2d0eBlj0E1AmxI9Hc1bc#scrollTo=7sNBpIvPzRgU)
+[CryptoBench Inference (Colab)](https://colab.research.google.com/drive/1FSkESlIdVksg2d0eBlj0E1AmxI9Hc1bc#scrollTo=Yt1l43M19bLq)
 
 ## **Licence**
 
