@@ -27,6 +27,17 @@ def bc_scoring(y_true: pt.Tensor, y_prob: pt.Tensor, threshold: float = 0.5) -> 
         if len(np.unique(yt)) < 2:
             continue
 
+        # ---- DIAGNOSTIC ----
+        uniq = np.unique(yt)
+        if not set(uniq).issubset({0, 1}):
+            print(f"[bc_scoring] BAD LABELS class={i} unique_values={uniq} "
+                  f"counts={np.unique(yt, return_counts=True)}")
+        cm = confusion_matrix(yt, yp_bin)
+        if cm.shape != (2, 2):
+            print(f"[bc_scoring] BAD CM SHAPE class={i} shape={cm.shape} "
+                  f"yt_unique={uniq} yp_bin_unique={np.unique(yp_bin)}")
+        # ---------------------
+
         TN, FP, FN, TP = confusion_matrix(yt, yp_bin).ravel()
 
         acc  = accuracy_score(yt, yp_bin)

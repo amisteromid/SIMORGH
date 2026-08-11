@@ -14,11 +14,11 @@ config_model = {
 
 config_runtime = {'loss_alpha': 0.75,
     'loss_gamma': 2,
-    'patience': 20, #40
+    'patience': 40,
     'log_step': 512, 
     'device': 'cuda',
     'batch_size': 2,
-    'num_epochs': 10, #50
+    'num_epochs': 50,
     'min_lr': 5e-6,
     'warmup_epochs': 2,
     'max_lr': 8e-4,
@@ -37,12 +37,12 @@ config_runtime_set = {'loss_alpha': 0.75,
     'max_lr': 5e-5,
     }
 
-config_data = {
-    'dataset_filepath': "/home/omokhtari/deliqate/Data/ds3/db_bbflow.h5",
-    'train_selection_filepath': '/home/omokhtari/SIMORGH/Data/splitting/train_all.txt',
-    'valid_selection_filepath': '/home/omokhtari/SIMORGH/Data/splitting/valid_all.txt',
-    'max_size': 1500,
-}
+#config_data = {
+#    'dataset_filepath': "/home/omokhtari/deliqate/Data/ds3/db_bbflow.h5",
+#    'train_selection_filepath': '/home/omokhtari/SIMORGH/Data/splitting/train_p2rank.txt',
+#    'valid_selection_filepath': '/home/omokhtari/SIMORGH/Data/splitting/valid_p2rank.txt',
+#    'max_size': 1500,
+#}
 
 #config_data = {
 #    'dataset_filepath': "/home/omokhtari/deliqate/Data/ds3/db_bbflow.h5",
@@ -63,3 +63,23 @@ config_data = {
 #    'max_size': 1500,
 #}
 
+#config_data = {
+#    'dataset_filepath': "/home/omokhtari/E3DyanmiT/Data/data/db5.h5",
+#    'train_selection_filepath': '/home/omokhtari/deliqate/Data/cryptobench/splitting/train.txt',
+#    'valid_selection_filepath': '/home/omokhtari/deliqate/Data/cryptobench/splitting/valid.txt',
+#    'max_size': 1500,
+#}
+
+#config_data = {
+#    'dataset_filepath': "/srv/storage/delta@storage4.nancy.grid5000.fr/omokhtari/db_plinder.h5",
+#    'train_selection_filepath': '/home/omokhtari/SIMORGH/Data/plinder//train_manual.txt',
+#    'valid_selection_filepath': '/home/omokhtari/SIMORGH/Data/plinder/valid_manual.txt',
+#    'max_size': 2000,
+#}
+
+config_data = {
+    'dataset_filepath': "/srv/storage/delta@storage4.nancy.grid5000.fr/omokhtari/db5.h5",
+    'train_selection_filepath': '/home/omokhtari/SIMORGH/Data/asd/split/train.txt',
+    'valid_selection_filepath': '/home/omokhtari/SIMORGH/Data/asd/split/valid.txt',
+    'max_size': 2000,
+}

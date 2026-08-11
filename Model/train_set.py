@@ -12,12 +12,12 @@ from architecture.model_set import SetModel
 from architecture.config import config_runtime_set as config_runtime
 from architecture.config import config_model, config_data
 from utils_set import setup_dataloader, collate_set_transformer
-from scoring import bc_scoring, bc_score_names, nanmean
+from scoring import bc_scoring, bc_score_names
 
 model1_num = argv[1]
 model_num = argv[2]
 
-wandb.login(key='aa3d83b08d1587884348defb38d3143f893e2b96')
+wandb.login()
 
 class WarmUpCosineAnnealingLR(_LRScheduler):
     def __init__(self, optimizer, T_max, T_warmup, eta_min=0, last_epoch=-1):
@@ -33,6 +33,8 @@ class WarmUpCosineAnnealingLR(_LRScheduler):
             k = 1 + math.cos(math.pi * (self.last_epoch - self.T_warmup) / (self.T_max - self.T_warmup))
             return [self.eta_min + (base_lr - self.eta_min) * k / 2 for base_lr in self.base_lrs]
 
+
+
 def scoring(eval_results, device=torch.device('cpu')):
     # compute sum losses and scores for each entry
     losses, scores = [], []
@@ -42,13 +44,15 @@ def scoring(eval_results, device=torch.device('cpu')):
 
     # average scores
     m_losses = np.mean(losses)
-    m_scores = nanmean(torch.stack(scores, dim=0)).numpy()
-
+    m_scores = torch.nanmean(torch.stack(scores, dim=0), dim=0).numpy()
+    print (scores)
     # pack scores
     scores = {'loss': float(m_losses)}
     for i,s in enumerate(m_scores.squeeze(1)):
         scores[f'{bc_score_names[i]}'] = s
+    #print (f"====================PR-AUC: {scores['PR']}==============================")
     return scores
+
     
 def eval_step(model1, model2, device, batch_data, config_runtime, global_step):
     model1.eval()
@@ -63,7 +67,7 @@ def eval_step(model1, model2, device, batch_data, config_runtime, global_step):
             emb = model1([[seq.to(device), SCOV[i].to(device)], [SCOD[i].to(device), R[i].to(device), D[i].to(device)]],edge_src.to(device),edge_dst.to(device), get_mor=True)
         emb_list.append(emb)
     emb_list = torch.stack(emb_list, dim=1)
-    # evalluate with setmodeli
+    # evalluate with setmodel
     z = model2.forward(emb_list)
     # compute weighted loss
     loss = sigmoid_focal_loss(z, y.to(z.dtype).to(device), alpha=config_runtime['loss_alpha'], gamma=config_runtime['loss_gamma'], reduction='mean')
@@ -203,8 +207,8 @@ def train(config_data, config_model, config_runtime, output_path):
 
                 # back in train mode
                 model = model.train()
-        if patience_counter >= config_runtime['patience']:
-            break  # Break out of the training loop
+        #if patience_counter >= config_runtime['patience']:
+        #    break  # Break out of the training loop
     wandb.finish()
 
 

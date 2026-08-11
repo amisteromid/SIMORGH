@@ -10,12 +10,12 @@ from torch.optim.lr_scheduler import _LRScheduler
 from architecture.model_gnn import Model
 from architecture.config import config_model, config_runtime, config_data
 from utils import setup_dataloader, collate_batch_data
-from scoring import bc_scoring, bc_score_names, nanmean
+from scoring import bc_scoring, bc_score_names
 
 
 model_num = argv[1]
 
-wandb.login(key='')
+wandb.login()
 
 class WarmUpCosineAnnealingLR(_LRScheduler):
     def __init__(self, optimizer, T_max, T_warmup, eta_min=0, last_epoch=-1):
@@ -40,13 +40,13 @@ def scoring(eval_results, device=torch.device('cpu')):
 
     # average scores
     m_losses = np.mean(losses)
-    m_scores = nanmean(torch.stack(scores, dim=0)).numpy()
-
+    m_scores = torch.nanmean(torch.stack(scores, dim=0), dim=0).numpy()
+    print (scores)
     # pack scores
     scores = {'loss': float(m_losses)}
     for i,s in enumerate(m_scores.squeeze(1)):
         scores[f'{bc_score_names[i]}'] = s
-    print (f"====================PR-AUC: {scores['PR']}==============================")
+    #print (f"====================PR-AUC: {scores['PR']}==============================")
     return scores
     
 def eval_step(model, device, batch_data, config_runtime, global_step):
@@ -79,7 +79,7 @@ def train(config_data, config_model, config_runtime, output_path):
         checkpoint = torch.load(model_filepath, map_location=lambda storage, loc: storage.cuda(0), weights_only=True)
         model.load_state_dict(checkpoint)
         #model.load_state_dict(torch.load(model_filepath))
-        global_step = 25727
+        global_step = 5631
     else:
         # starting global step
         global_step = 0
@@ -94,6 +94,7 @@ def train(config_data, config_model, config_runtime, output_path):
     # setup dataloaders - feature orders: onehot_seq, rmsf1, rmsf2, rsa, angular_variation, nn_topk, D_nn, R_nn, SCOD_nn, motion_v, motion_s, y
     dataloader_train = setup_dataloader(config_data, config_data['train_selection_filepath'])
     dataloader_test = setup_dataloader(config_data, config_data['valid_selection_filepath'])
+    print (len(dataloader_train), len(dataloader_test))
     val_iterator = iter(dataloader_test)
 
     steps_per_epoch = len(dataloader_train)
@@ -155,7 +156,7 @@ def train(config_data, config_model, config_runtime, output_path):
 
                 with torch.no_grad():
                     test_results = []
-                    batches_to_eval = config_runtime["log_step"]
+                    batches_to_eval = min(config_runtime["log_step"], len(dataloader_test))
 
                     # Loop for the specified number of validation batches
                     for _ in range(batches_to_eval):
@@ -194,8 +195,8 @@ def train(config_data, config_model, config_runtime, output_path):
 
                 # back in train mode
                 model = model.train()
-        if patience_counter >= config_runtime['patience']:
-            break  # Break out of the training loop
+        #if patience_counter >= config_runtime['patience']:
+        #    break  # Break out of the training loop
     wandb.finish()
 
 

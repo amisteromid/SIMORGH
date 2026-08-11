@@ -11,8 +11,7 @@ def setup_dataloader(config_data, sids_selection_filepath):
     #m = np.isin([i.split('_')[0]+'_'+i.split('_')[1] for i in sids], sids_sel)
     #m = np.isin([i.split('_')[0] for i in sids], sids_sel)
     #m &= np.isin([int(i.split('_')[-1]) for i in sids],[0,5,11,16,22,27,33,38,44,49,55,60,66,71,77,82,88,93])
-    #m &= np.isin([int(i.split('_')[1]) for i in sids],[0,11,21,31,41,51,61,71,81,91])
-    #m &= np.isin([int(i.split('_')[1]) for i in sids],[0])
+    m &= np.isin([int(i.split('_')[-1]) for i in sids],[0])
     # Further filter out big ones
     sizes = np.array([s for s in dataset.size])
     big_ones = np.where(sizes > config_data['max_size'])

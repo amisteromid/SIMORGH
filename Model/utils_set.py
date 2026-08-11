@@ -29,6 +29,7 @@ class Dataset(torch.utils.data.Dataset):
     def __init__(self, dataset_filepath):
         super(Dataset, self).__init__()
         self.dataset_filepath = dataset_filepath
+        self._hf = None
         #self.conformations = [0, 5, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95]
         self.conformations = list(range(25))
 
@@ -42,6 +43,11 @@ class Dataset(torch.utils.data.Dataset):
         self.m = np.ones(len(self.ID), dtype=bool)
         self.masked_protein_ids = np.unique(self.base_ids) 
     
+    def _get_file(self):
+        if self._hf is None:
+            self._hf = h5py.File(self.dataset_filepath, 'r')
+        return self._hf
+
     def update_mask(self, m):
         self.m &= m
         self.masked_protein_ids = np.unique(self.base_ids[self.m])
@@ -60,29 +66,28 @@ class Dataset(torch.utils.data.Dataset):
     def __getitem__(self, k): # # k index of unique proteins
         protein_id = self.masked_protein_ids[k]
         scov_list, nn_ids_list, d_list, r_list, scod_list = [], [], [], [], []
-        labels = None 
+        labels = None
+        hf = self._get_file()
+        for conf in self.conformations:
+            key = f'{protein_id}_{conf}'
 
-        with h5py.File(self.dataset_filepath, 'r') as hf:
-            for conf in self.conformations:
-                key = f'{protein_id}_{conf}'
+            # Check if this conformation exists
+            if f'data/features/{key}' not in hf:
+                continue
+            hgrp_f = hf[f'data/features/{key}']
                 
-                # Check if this conformation exists
-                if f'data/features/{key}' not in hf:
-                    continue
-                hgrp_f = hf[f'data/features/{key}']
+            # Append features for this conformation to our lists
+            scov_list.append(torch.tensor(np.array(hgrp_f['node/SCOV_ref'])))
+            d_list.append(torch.tensor(np.array(hgrp_f['edge/D_ref'])))
+            r_list.append(torch.tensor(np.array(hgrp_f['edge/R_ref'])))
+            scod_list.append(torch.tensor(np.array(hgrp_f['edge/SCOD_ref'])))
+            nn_ids_list.append(torch.tensor(np.array(hgrp_f['nn_idx'])))
                 
-                # Append features for this conformation to our lists
-                scov_list.append(torch.tensor(np.array(hgrp_f['node/SCOV_ref'])))
-                d_list.append(torch.tensor(np.array(hgrp_f['edge/D_ref'])))
-                r_list.append(torch.tensor(np.array(hgrp_f['edge/R_ref'])))
-                scod_list.append(torch.tensor(np.array(hgrp_f['edge/SCOD_ref'])))
-                nn_ids_list.append(torch.tensor(np.array(hgrp_f['nn_idx'])))
-                
-                # Load label and seq only once
-                if labels is None:
-                    seq = torch.tensor(np.array(hgrp_f['node/seq']))
-                    hgrp_l = hf[f'data/labels/{key}']
-                    labels = torch.tensor(np.array(hgrp_l['labels']))
+            # Load label and seq only once
+            if labels is None:
+                seq = torch.tensor(np.array(hgrp_f['node/seq']))
+                hgrp_l = hf[f'data/labels/{key}']
+                labels = torch.tensor(np.array(hgrp_l['labels']))
         
         return seq, scov_list, nn_ids_list, d_list, r_list, scod_list, labels
 

@@ -60,7 +60,6 @@ class SetModel(torch.nn.Module):
         num_res, num_conf, emb_dim = X_n_set.shape
         X_n_flat = X_n_set.view(num_res * num_conf, -1)
         node_index = torch.arange(num_res, device=device).repeat_interleave(num_conf) # [0, 0, ..., 1, 1, ...]
-        if num_conf <19: print (num_conf)
         # initialize global token (a boring query as mean of original embeddings)
         token_approx = self.scale_scatter(X_n_flat, node_index, dim=0, dim_size=num_res)
         
@@ -87,6 +86,7 @@ class SetModel(torch.nn.Module):
             weighted_slices.append(field)
             idx += dim
         X_n_flat_weighted = torch.cat(weighted_slices, dim=1)
+
         token_clean = self.scale_scatter(X_n_flat_weighted, node_index, dim=0, dim_size=num_res)
         
         # normalize

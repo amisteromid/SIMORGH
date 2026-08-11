@@ -33,18 +33,18 @@ def _get_ca_cb(atoms):
     else:
         cb = np.zeros(3)
     return np.array([ca, cb])
-    
+
 def get_xyz(pdb_file):
     """Extract sequence and CA/CB coordinates from multi-model PDB file"""
     all_models = []
     sequence = []
     current_model = []
-    
+
     with open(pdb_file, 'r') as f:
         current_residue = None
         residue_atoms = {}
         current_resname = None
-        
+
         for line in f:
             if line.startswith('MODEL'):
                 current_model = []
@@ -52,7 +52,7 @@ def get_xyz(pdb_file):
                 current_residue = None
                 residue_atoms = {}
                 continue
-                
+
             if line.startswith('ENDMDL'):
                 if residue_atoms:
                     current_model.append(_get_ca_cb(residue_atoms))
@@ -62,16 +62,16 @@ def get_xyz(pdb_file):
                     all_models.append(np.array(current_model))
                 current_residue = None
                 continue
-            
+
             if not line.startswith('ATOM'):
                 continue
-            
+
             atom_name = line[12:16].strip()
             res_num = int(line[22:26].strip())
             chain = line[21]
             res_key = (res_num, chain)
             resname = line[17:20].strip()
-            
+
             if res_key != current_residue:
                 if current_residue and residue_atoms:
                     current_model.append(_get_ca_cb(residue_atoms))
@@ -79,21 +79,33 @@ def get_xyz(pdb_file):
                 current_residue = res_key
                 residue_atoms = {}
                 current_resname = resname
-            
+
             if atom_name in ('CA', 'CB', 'N', 'C'):
                 x = float(line[30:38])
                 y = float(line[38:46])
                 z = float(line[46:54])
                 residue_atoms[atom_name] = np.array([x, y, z])
-    
-    # Handle single model PDB (no MODEL/ENDMDL)
-    if len(all_models) < 2:
-        warnings.warn(f"{pdb_file} contains {len(all_models)} model(s). Expected >= 2 models.")
+
+    # Flush last residue and model for single-model PDBs (no ENDMDL marker)
+    if current_model or residue_atoms:
+        if residue_atoms:
+            current_model.append(_get_ca_cb(residue_atoms))
+            sequence.append(protein_letters_3to1_extended.get(current_resname, 'X'))
+        if current_model:
+            all_models.append(np.array(current_model))
+
+    if len(all_models) < 1:
+        warnings.warn(f"{pdb_file} contains 0 models.")
         return None, None
-    
+
+    #for i, model in enumerate(all_models):
+    #    try:
+    #        print (i, np.array(model).shape)
+    #    except Exception as e:
+    #        print(i, e)
     coords = np.array(all_models, dtype=np.float32)  # [num_models, num_residues, 2, 3]
     return ''.join(sequence), coords
-    
+
 def get_k_nearest_neighbors(xyz_ca, k):
     """Get k nearest neighbors indices for each residue"""
     n_residues = xyz_ca.shape[0]
@@ -119,7 +131,7 @@ def extract_topology_knn(xyz, frame_idx, k):
     # CA-CA displacement vectors [n_residues, k, 3]
     R = xyz_ca[:, np.newaxis, :] - xyz_ca[neighbor_indices, :]
     # CA-CA distances [n_residues, k, 1]
-    D = np.linalg.norm(R, axis=-1, keepdims=True)
+    D = np.linalg.norm(R, axis=-1, keepdims=True).astype(np.float32)
     # Side chain orientation (CA to CB)
     SCOV = xyz_cb - xyz_ca
     # Side chain orientation difference
@@ -130,22 +142,51 @@ from Bio.PDB import PDBParser, PDBIO
 def write_pdb_with_bfactor(pdb_file, predictions, output_file=None):
     if output_file is None:
         output_file = pdb_file
-    # Convert to numpy if torch tensor
+
     if hasattr(predictions, 'cpu'):
         predictions = predictions.detach().numpy()
-    # Load PDB
+
+    # ── rebuild the same ordered key list that get_xyz produced ──────────────
+    ordered_keys = []
+    seen = set()
+    with open(pdb_file, 'r') as f:
+        for line in f:
+            if line.startswith('MODEL'):
+                ordered_keys = []   # only care about first model
+                seen = set()
+            if line.startswith('ENDMDL'):
+                break               # stop after first model
+            if not line.startswith('ATOM'):
+                continue
+            res_num = int(line[22:26].strip())
+            chain   = line[21]
+            res_key = (res_num, chain)
+            if res_key not in seen:
+                seen.add(res_key)
+                ordered_keys.append(res_key)
+
+    key_to_pred = {key: predictions[i] for i, key in enumerate(ordered_keys)}
+
+    # ── write back ────────────────────────────────────────────────────────────
     parser = PDBParser(QUIET=True)
     structure = parser.get_structure('protein', pdb_file)
-    # Update B-factors for all models
+
     for model in structure:
         for chain in model:
-            for i, residue in enumerate(chain):
+            for residue in chain:
+                if 'CA' not in residue:
+                    continue
+                res_key = (residue.id[1], chain.id)   # (seq_num, chain_id)
+                if res_key not in key_to_pred:
+                    continue                            # insertion code / HETATM etc.
+                pred_val = float(key_to_pred[res_key])
                 for atom in residue:
-                    atom.set_bfactor(round(float(predictions[i]), 2))
-    # Save
+                    atom.set_bfactor(round(pred_val, 2))
+
     io = PDBIO()
     io.set_structure(structure)
     io.save(output_file)
+
 
 if __name__ == '__main__':
     device = torch.device(device)
@@ -160,13 +201,17 @@ if __name__ == '__main__':
     model2.eval()
 
 
-    sel = np.genfromtxt('apo_test_ids.txt', dtype=np.dtype('U'))
-    for pdb_file in tqdm(glob(os.path.join("/home/omokhtari/SIMORGH/Model/MD_clusters_chains_BB", "*.pdb"))):
-    #for pdb_file in tqdm(glob(os.path.join("/srv/storage/capsid@srv-data2.nancy.grid5000.fr/omokhtari/bbflow_data/cryptobench_removed_extra_chains/", "*.pdb"))):
-        #if os.path.basename(pdb_file)[:4] not in sel:
-        #    continue
+    sel = np.genfromtxt('/home/omokhtari/SIMORGH/Data/setup3/plinder_test/apo_structures_for_test.txt', dtype=np.dtype('U'))[::10]; print (len(sel))
+    #for pdb_file in tqdm(glob(os.path.join("/home/omokhtari/SIMORGH/Data/setup2/native_benchmarks", "*.pdb"))):
+    for pdb_file in tqdm(glob(os.path.join("/srv/storage/delta@storage4.nancy.grid5000.fr/omokhtari/plinder/apo_structures_bbflow_realigned","*.pdb"))):
+    #for pdb_file in tqdm(glob(os.path.join("/home/omokhtari/SIMORGH/Model/cryptobench_MD","*.pdb"))):
+    #for pdb_file in tqdm(glob(os.path.join("/srv/storage/delta@storage4.nancy.grid5000.fr/omokhtari/bbflow_data/all_structures/", "*.pdb"))):
+        #print (pdb_file)
+        if os.path.basename(pdb_file)[:-4] not in sel:
+            continue
+        #if "5OJ0_A" in pdb_file: continue
         name = os.path.basename(pdb_file).replace('.pdb', '_predicted.pdb')
-        out_file = os.path.join("predictions_MD", name)
+        out_file = os.path.join("benchmarks_plinder_SIMORGH3", name)
         if os.path.exists(out_file):
             continue
         # Setup data
@@ -193,4 +238,5 @@ if __name__ == '__main__':
         emb_list = torch.stack(emb_list, dim=1)
         # evalluate with setmodeli
         z = model2.forward(emb_list)
+        #print (os.path.basename(pdb_file), len(z), torch.sigmoid(z).flatten())
         write_pdb_with_bfactor(pdb_file, torch.sigmoid(z).cpu(), out_file)
