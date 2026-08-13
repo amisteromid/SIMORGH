@@ -38,35 +38,35 @@ config_runtime_set = {'loss_alpha': 0.75,
     }
 
 #config_data = {
-#    'dataset_filepath': "/home/omokhtari/deliqate/Data/ds3/db_bbflow.h5",
-#    'train_selection_filepath': '/home/omokhtari/SIMORGH/Data/splitting/train_p2rank.txt',
-#    'valid_selection_filepath': '/home/omokhtari/SIMORGH/Data/splitting/valid_p2rank.txt',
+#    'dataset_filepath': "/home/omokhtari/plbs/Data/ds3/db_bbflow.h5",
+#    'train_selection_filepath': '/home/omokhtari/plbs/Data/splitting/train_p2rank.txt',
+#    'valid_selection_filepath': '/home/omokhtari/plbs/Data/splitting/valid_p2rank.txt',
 #    'max_size': 1500,
 #}
 
 #config_data = {
-#    'dataset_filepath': "/home/omokhtari/deliqate/Data/ds3/db_bbflow.h5",
-#    'train_selection_filepath': '/home/omokhtari/deliqate/Data/ds3/splitting/train.txt',
-#    'valid_selection_filepath': '/home/omokhtari/deliqate/Data/ds3/splitting/valid.txt',
+#    'dataset_filepath': "/home/omokhtari/plbs/Data/ds3/db_bbflow.h5",
+#    'train_selection_filepath': '/home/omokhtari/plbs/Data/ds3/splitting/train.txt',
+#    'valid_selection_filepath': '/home/omokhtari/plbs/Data/ds3/splitting/valid.txt',
 #    'max_size': 1500,
 #}
 #config_data = {
-#    'dataset_filepath': "/home/omokhtari/deliqate/Data/AFlow_raw/db_AFlow_raw.h5",
-#    'train_selection_filepath': '/home/omokhtari/deliqate/Data/AFlow_raw/splitting/train.txt',
-#    'valid_selection_filepath': '/home/omokhtari/deliqate/Data/AFlow_raw/splitting/valid.txt',
+#    'dataset_filepath': "/home/omokhtari/plbs/Data/AFlow_raw/db_AFlow_raw.h5",
+#    'train_selection_filepath': '/home/omokhtari/plbs/Data/AFlow_raw/splitting/train.txt',
+#    'valid_selection_filepath': '/home/omokhtari/plbs/Data/AFlow_raw/splitting/valid.txt',
 #    'max_size': 1500,
 #}
 #config_data = {
-#    'dataset_filepath': "/home/omokhtari/E3DyanmiT/Data/data/db4.h5",
-#    'train_selection_filepath': '/home/omokhtari/deliqate/Data/Misato/splitting/train3.txt',
-#    'valid_selection_filepath': '/home/omokhtari/deliqate/Data/Misato/splitting/valid3.txt',
+#    'dataset_filepath': "/home/omokhtari/plbs/Data/data/db4.h5",
+#    'train_selection_filepath': '/home/omokhtari/plbs/Data/Misato/splitting/train3.txt',
+#    'valid_selection_filepath': '/home/omokhtari/plbs/Data/Misato/splitting/valid3.txt',
 #    'max_size': 1500,
 #}
 
 #config_data = {
-#    'dataset_filepath': "/home/omokhtari/E3DyanmiT/Data/data/db5.h5",
-#    'train_selection_filepath': '/home/omokhtari/deliqate/Data/cryptobench/splitting/train.txt',
-#    'valid_selection_filepath': '/home/omokhtari/deliqate/Data/cryptobench/splitting/valid.txt',
+#    'dataset_filepath': "/home/omokhtari/plbs/Data/data/db5.h5",
+#    'train_selection_filepath': '/home/omokhtari/plbs/Data/cryptobench/splitting/train.txt',
+#    'valid_selection_filepath': '/home/omokhtari/plbs/Data/cryptobench/splitting/valid.txt',
 #    'max_size': 1500,
 #}
 
