@@ -3,7 +3,6 @@
 ![Ensemble Aggregation](Birds.gif)
 
 ## Table of Contents: 
-- [The workflow](#The-workflow)
 - [Installation](#Installation)
 - [Preparing the dataset](#Preparing-the-dataset)
 - [Training the model](#Training-the-model)
