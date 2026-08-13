@@ -6,6 +6,7 @@
 - [The workflow](#The-workflow)
 - [Installation](#Installation)
 - [Preparing the dataset](#Preparing-the-dataset)
+- [Training the model](#Training-the-model)
 - [Inference](#Inference)
 - [Licence](#Licence)
 - [Citation](#Citation)
