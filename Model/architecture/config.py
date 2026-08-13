@@ -10,7 +10,7 @@ config_model = {
     '_NODE_FEATURES_IRREPS': '1x1e+1x2e+128x0e', '_NUM_RADIAL': 128,
     '_EDGE_ATTR_IRREPS': '1x1e+1x2e+1x1e+1x2e', '_IRREPS_HEAD': '16x0e+8x1e+4x2e', '_NUM_HEADS': 4},
     "layers": [11,11,11,11],
-    }    # ===> in train.py remove slicing !!!!!!! in Blocks encoder add irreps
+    }
 
 config_runtime = {'loss_alpha': 0.75,
     'loss_gamma': 2,
