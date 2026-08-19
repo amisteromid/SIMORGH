@@ -1,9 +1,8 @@
 # Copyright (c) 2026 Omid Mokhtari
 
+import argparse
 import os
 import warnings
-from glob import glob
-from sys import argv
 
 import numpy as np
 import torch
@@ -16,8 +15,6 @@ from architecture.config import config_model
 from architecture.model_gnn import Model
 from architecture.model_set import SetModel
 
-model1_num = argv[1]
-model2_num = argv[2]
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
 k = 32
@@ -223,91 +220,77 @@ def write_pdb_with_bfactor(pdb_file, predictions, output_file=None):
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="SIMORGH inference on a PDB file")
+    parser.add_argument("--model1", required=True, help="Path to the GNN model checkpoint (.pt)")
+    parser.add_argument("--model2", required=True, help="Path to the SetModel checkpoint (.pt)")
+    parser.add_argument("-i", "--input", required=True, help="Input PDB file")
+    parser.add_argument("-o", "--output", required=True, help="Output PDB file (with predictions in B-factor)")
+    args = parser.parse_args()
+
     device = torch.device(device)
     # Setup models
     model1 = Model(config_model).to(device)
-    ckpt1 = torch.load(f"model_{model1_num}.pt", map_location=device, weights_only=True)
+    ckpt1 = torch.load(args.model1, map_location=device, weights_only=True)
     model1.load_state_dict(
         ckpt1["model_state_dict"] if "model_state_dict" in ckpt1 else ckpt1
     )
     model1.eval()
     model2 = SetModel(config_model).to(device)
-    ckpt2 = torch.load(f"model_{model2_num}.pt", map_location=device, weights_only=True)
+    ckpt2 = torch.load(args.model2, map_location=device, weights_only=True)
     model2.load_state_dict(
         ckpt2["model_state_dict"] if "model_state_dict" in ckpt2 else ckpt2
     )
     model2.eval()
 
-    sel = np.genfromtxt(
-        "/home/omokhtari/SIMORGH/Data/setup3/plinder_test/apo_structures_for_test.txt",
-        dtype=np.dtype("U"),
-    )[::10]
-    print(len(sel))
-    # for pdb_file in tqdm(glob(os.path.join("/home/omokhtari/SIMORGH/Data/setup2/native_benchmarks", "*.pdb"))):
-    for pdb_file in tqdm(
-        glob(
-            os.path.join(
-                "/srv/storage/delta@storage4.nancy.grid5000.fr/omokhtari/plinder/apo_structures_bbflow_realigned",
-                "*.pdb",
-            )
+    pdb_file = args.input
+    out_file = args.output
+    os.makedirs(os.path.dirname(os.path.abspath(out_file)), exist_ok=True)
+
+    # Setup data
+    seq, xyz = get_xyz(pdb_file)
+    if seq is None:
+        raise ValueError(f"Could not parse any models from {pdb_file}")
+    seq = torch.tensor([aa_idx[r] for r in seq], dtype=torch.long)
+    # GNN
+    emb_list = []
+    for frame_idx in tqdm(range(len(xyz)), leave=False):
+        # Extract features
+        R, D, SCOV, SCOD, nn_ids = extract_topology_knn(
+            xyz, frame_idx=frame_idx, k=k
         )
-    ):
-        # for pdb_file in tqdm(glob(os.path.join("/home/omokhtari/SIMORGH/Model/cryptobench_MD","*.pdb"))):
-        # for pdb_file in tqdm(glob(os.path.join("/srv/storage/delta@storage4.nancy.grid5000.fr/omokhtari/bbflow_data/all_structures/", "*.pdb"))):
-        # print (pdb_file)
-        if os.path.basename(pdb_file)[:-4] not in sel:
-            continue
-        # if "5OJ0_A" in pdb_file: continue
-        name = os.path.basename(pdb_file).replace(".pdb", "_predicted.pdb")
-        out_file = os.path.join("benchmarks_plinder_SIMORGH3", name)
-        if os.path.exists(out_file):
-            continue
-        # Setup data
-        seq, xyz = get_xyz(pdb_file)
-        if seq is None:
-            continue
-        seq = torch.tensor([aa_idx[r] for r in seq], dtype=torch.long)
-        # GNN
-        emb_list = []
-        for frame_idx in tqdm(range(len(xyz)), leave=False):
-            # Extract features
-            R, D, SCOV, SCOD, nn_ids = extract_topology_knn(
-                xyz, frame_idx=frame_idx, k=k
+        # Spherical harmonics
+        R = o3.spherical_harmonics(
+            "1x1e+1x2e", torch.tensor(R), normalize=True, normalization="component"
+        )
+        SCOD = o3.spherical_harmonics(
+            "1x1e+1x2e",
+            torch.tensor(SCOD),
+            normalize=True,
+            normalization="component",
+        )
+        SCOV = o3.spherical_harmonics(
+            "1x1e+1x2e",
+            torch.tensor(SCOV),
+            normalize=True,
+            normalization="component",
+        )
+        # Edge
+        num_nodes, k = nn_ids.shape
+        edge_src = torch.arange(num_nodes).unsqueeze(1).repeat(1, k).flatten()
+        edge_dst = torch.tensor(nn_ids.flatten())
+        with torch.no_grad():
+            emb = model1(
+                [
+                    [seq.to(device), SCOV.to(device)],
+                    [SCOD.to(device), R.to(device), torch.tensor(D).to(device)],
+                ],
+                edge_src.to(device),
+                edge_dst.to(device),
+                get_mor=True,
             )
-            # Spherical harmonics
-            R = o3.spherical_harmonics(
-                "1x1e+1x2e", torch.tensor(R), normalize=True, normalization="component"
-            )
-            SCOD = o3.spherical_harmonics(
-                "1x1e+1x2e",
-                torch.tensor(SCOD),
-                normalize=True,
-                normalization="component",
-            )
-            SCOV = o3.spherical_harmonics(
-                "1x1e+1x2e",
-                torch.tensor(SCOV),
-                normalize=True,
-                normalization="component",
-            )
-            # Edge
-            num_nodes, k = nn_ids.shape
-            edge_src = torch.arange(num_nodes).unsqueeze(1).repeat(1, k).flatten()
-            edge_dst = torch.tensor(nn_ids.flatten())
-            with torch.no_grad():
-                emb = model1(
-                    [
-                        [seq.to(device), SCOV.to(device)],
-                        [SCOD.to(device), R.to(device), torch.tensor(D).to(device)],
-                    ],
-                    edge_src.to(device),
-                    edge_dst.to(device),
-                    get_mor=True,
-                )
-                # z = model1([[seq.to(device), SCOV.to(device)], [SCOD.to(device), R.to(device), torch.tensor(D).to(device)]],edge_src.to(device),edge_dst.to(device),get_mor=False)
-            emb_list.append(emb)
-        emb_list = torch.stack(emb_list, dim=1)
-        # evalluate with setmodeli
-        z = model2.forward(emb_list)
-        # print (os.path.basename(pdb_file), len(z), torch.sigmoid(z).flatten())
-        write_pdb_with_bfactor(pdb_file, torch.sigmoid(z).cpu(), out_file)
+        emb_list.append(emb)
+    emb_list = torch.stack(emb_list, dim=1)
+    # evaluate with setmodel
+    z = model2.forward(emb_list)
+    write_pdb_with_bfactor(pdb_file, torch.sigmoid(z).cpu(), out_file)
+    print(f"Predictions written to {out_file}")
