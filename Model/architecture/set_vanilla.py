@@ -1,13 +1,7 @@
+
 import torch
-import torch.nn as nn
-import torch_geometric
-import math
 from e3nn import o3
-from e3nn.nn import Gate
-from e3nn.o3 import Irreps
-from e3nn.nn import Activation, Gate
-from architecture.primitives import irreps2gate, ScaledScatter, LinearRS
-from architecture.primitives import EquivariantLayerNormV2 as layernorm
+
 from architecture.layers import DWTP
 
 
@@ -15,21 +9,18 @@ class SetModel(torch.nn.Module):
     def __init__(self, config):
         super().__init__()
 
-        self.irreps_node = o3.Irreps(config['dims']['_NODE_STATE_IRREPS'])
-        nhead  = config.get('nhead', 4)
-        num_sab = config.get('num_sab', 2)
+        self.irreps_node = o3.Irreps(config["dims"]["_NODE_STATE_IRREPS"])
+        nhead = config.get("nhead", 4)
+        num_sab = config.get("num_sab", 2)
 
         # ── 1. Equivariant → scalar via DWTP (self-interaction) ───────────────
         self.to_scalar = DWTP(
-            self.irreps_node,
-            self.irreps_node,
-            o3.Irreps('1x0e'),
-            bias=True
+            self.irreps_node, self.irreps_node, o3.Irreps("1x0e"), bias=True
         )
         # d_model is whatever DWTP outputs (all scalars, so .simplify() gives Nx0e)
         scalar_irreps = self.to_scalar.irreps_out.simplify()
-        d_model = scalar_irreps.dim          # total scalar dimension
-        ff_dim  = config.get('ff_dim', d_model * 4)
+        d_model = scalar_irreps.dim  # total scalar dimension
+        ff_dim = config.get("ff_dim", d_model * 4)
 
         # ── 2. SAB blocks ──────────────────────────────────────────────────────
         sab_layer = torch.nn.TransformerEncoderLayer(
@@ -37,7 +28,7 @@ class SetModel(torch.nn.Module):
             nhead=nhead,
             dim_feedforward=ff_dim,
             dropout=0.0,
-            activation='gelu',
+            activation="gelu",
             batch_first=True,
             norm_first=True,
         )
@@ -46,7 +37,7 @@ class SetModel(torch.nn.Module):
         # ── 3. PMA ────────────────────────────────────────────────────────────
         self.pma_seed = torch.nn.Parameter(torch.randn(1, 1, d_model))
         self.pma_attn = torch.nn.MultiheadAttention(d_model, nhead, batch_first=True)
-        self.pma_ff   = torch.nn.Sequential(
+        self.pma_ff = torch.nn.Sequential(
             torch.nn.LayerNorm(d_model),
             torch.nn.Linear(d_model, ff_dim),
             torch.nn.GELU(),
@@ -67,18 +58,17 @@ class SetModel(torch.nn.Module):
 
         # 1. Project to scalars via DWTP self-interaction
         X_flat = X_n_set.view(num_res * num_conf, -1)
-        X_scalar = self.to_scalar(X_flat, X_flat)            # [R*C, d_model]
-        X_scalar = X_scalar.view(num_res, num_conf, -1)      # [R, C, d_model]
+        X_scalar = self.to_scalar(X_flat, X_flat)  # [R*C, d_model]
+        X_scalar = X_scalar.view(num_res, num_conf, -1)  # [R, C, d_model]
 
         # 2. SAB: conformations attend to each other (per residue)
-        X_enc = self.sab(X_scalar)                           # [R, C, d_model]
+        X_enc = self.sab(X_scalar)  # [R, C, d_model]
 
         # 3. PMA: pool conformation set → one vector per residue
-        seed = self.pma_seed.expand(num_res, -1, -1)         # [R, 1, d_model]
-        pooled, _ = self.pma_attn(seed, X_enc, X_enc)        # [R, 1, d_model]
-        pooled = pooled.squeeze(1)                            # [R, d_model]
-        pooled = pooled + self.pma_ff(pooled)                 # residual
+        seed = self.pma_seed.expand(num_res, -1, -1)  # [R, 1, d_model]
+        pooled, _ = self.pma_attn(seed, X_enc, X_enc)  # [R, 1, d_model]
+        pooled = pooled.squeeze(1)  # [R, d_model]
+        pooled = pooled + self.pma_ff(pooled)  # residual
 
         # 4. Decode
-        return self.out_mlp(pooled)                           # [R, 1]
-
+        return self.out_mlp(pooled)  # [R, 1]
