@@ -18,7 +18,7 @@ from architecture.model_set import SetModel
 
 model1_num = argv[1]
 model2_num = argv[2]
-device = "cuda"
+device = "cuda" if torch.cuda.is_available() else "cpu"
 
 k = 32
 aa_idx = {

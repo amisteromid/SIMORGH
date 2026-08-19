@@ -122,7 +122,7 @@ def train(config_data, config_model, config_runtime, output_path):
     model_filepath = "model_ckpt_XX.pt"
     if os.path.isfile(model_filepath):
         checkpoint = torch.load(
-            model_filepath, map_location=lambda storage, loc: storage.cuda(0)
+            model_filepath, map_location=config_runtime["device"]
         )
         model.load_state_dict(checkpoint)
         # model.load_state_dict(torch.load(model_filepath))

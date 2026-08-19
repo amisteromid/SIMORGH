@@ -98,7 +98,7 @@ def train(config_data, config_model, config_runtime, output_path):
     if os.path.isfile(model_filepath):
         checkpoint = torch.load(
             model_filepath,
-            map_location=lambda storage, loc: storage.cuda(0),
+            map_location=config_runtime["device"],
             weights_only=True,
         )
         model.load_state_dict(checkpoint)

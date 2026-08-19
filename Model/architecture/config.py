@@ -1,3 +1,5 @@
+import torch
+
 # config_model = {
 #    "dims": {'_MAX_RESIDUE_TYPE': 24, '_NODE_STATE_IRREPS': '128x0e+64x1e+32x2e+16x3e',
 #    '_NODE_FEATURES_IRREPS': '1x1e+128x0e', '_NUM_RADIAL': 128,
@@ -18,12 +20,14 @@ config_model = {
     "layers": [11, 11, 11, 11],
 }
 
+_DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+
 config_runtime = {
     "loss_alpha": 0.75,
     "loss_gamma": 2,
     "patience": 40,
     "log_step": 512,
-    "device": "cuda",
+    "device": _DEVICE,
     "batch_size": 2,
     "num_epochs": 50,
     "min_lr": 5e-6,
@@ -37,7 +41,7 @@ config_runtime_set = {
     "loss_gamma": 2,
     "patience": 25,
     "log_step": 64,
-    "device": "cuda",
+    "device": _DEVICE,
     "batch_size": 1,
     "num_epochs": 20,
     "min_lr": 1e-6,
