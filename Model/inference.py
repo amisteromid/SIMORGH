@@ -279,18 +279,31 @@ if __name__ == "__main__":
         edge_src = torch.arange(num_nodes).unsqueeze(1).repeat(1, k).flatten()
         edge_dst = torch.tensor(nn_ids.flatten())
         with torch.no_grad():
-            emb = model1(
-                [
-                    [seq.to(device), SCOV.to(device)],
-                    [SCOD.to(device), R.to(device), torch.tensor(D).to(device)],
-                ],
-                edge_src.to(device),
-                edge_dst.to(device),
-                get_mor=True,
-            )
-        emb_list.append(emb)
+            if len(xyz) == 1:
+                z = model1(
+                    [
+                        [seq.to(device), SCOV.to(device)],
+                        [SCOD.to(device), R.to(device), torch.tensor(D).to(device)],
+                    ],
+                    edge_src.to(device),
+                    edge_dst.to(device),
+                    get_mor=False,
+                )
+            else:
+                emb = model1(
+                    [
+                        [seq.to(device), SCOV.to(device)],
+                        [SCOD.to(device), R.to(device), torch.tensor(D).to(device)],
+                    ],
+                    edge_src.to(device),
+                    edge_dst.to(device),
+                    get_mor=True,
+                )
+                emb_list.append(emb)
+if len(xyz) > 1:
     emb_list = torch.stack(emb_list, dim=1)
     # evaluate with setmodel
     z = model2.forward(emb_list)
-    write_pdb_with_bfactor(pdb_file, torch.sigmoid(z).cpu(), out_file)
-    print(f"Predictions written to {out_file}")
+
+write_pdb_with_bfactor(pdb_file, torch.sigmoid(z).cpu(), out_file)
+print(f"Predictions written to {out_file}")
