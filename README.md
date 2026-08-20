@@ -60,6 +60,52 @@ The pretrained models used for CryptoBench are:
 Alternatively, you can run inference directly using the Google Colab notebook:  
 [CryptoBench Inference (Colab)](https://colab.research.google.com/drive/1FSkESlIdVksg2d0eBlj0E1AmxI9Hc1bc#scrollTo=Yt1l43M19bLq)
 
+### Docker
+
+A `Dockerfile` is provided so you can run inference without manually installing
+the CUDA / PyTorch / PyG stack. The image bundles the model checkpoints
+(`model_4.pt`, `model_44.pt`) so you only need to supply input/output PDB paths.
+
+#### Requirements
+
+- [Docker](https://docs.docker.com/get-docker/)
+- [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html) (for GPU access)
+
+#### Build the image
+
+```bash
+docker build -t simorgh-inference .
+```
+
+#### Run inference
+
+Mount a directory containing your PDB files and pass the input/output paths.
+The `--model1` and `--model2` flags are pre-configured in the entrypoint, so
+you only need `-i` and `-o`:
+
+```bash
+docker run --gpus all \
+  -v /path/to/pdbs:/data \
+  simorgh-inference \
+  -i /data/input.pdb \
+  -o /data/output.pdb
+```
+
+With optional HDBSCAN clustering (writes cluster IDs to the occupancy column):
+
+```bash
+docker run --gpus all \
+  -v /path/to/pdbs:/data \
+  simorgh-inference \
+  -i /data/input.pdb \
+  -o /data/output.pdb \
+  --cluster --cutoff 0.5
+```
+
+The output PDB will contain:
+- **B-factor column** — predicted binding-site probability per residue (0–1)
+- **Occupancy column** — cluster ID (only when `--cluster` is used; `-1` = noise)
+
 ## **Licence**
 
 Copyright (c) 2026 Omid Mokhtari, Inria
