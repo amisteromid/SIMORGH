@@ -40,7 +40,3 @@ COPY --chown=appuser:appuser Model/ /home/appuser/Model/
 
 USER appuser
 WORKDIR /home/appuser/Model
-
-ENTRYPOINT ["python", "inference.py", \
-            "--model1", "/home/appuser/Model/model_4.pt", \
-            "--model2", "/home/appuser/Model/model_44.pt"]
