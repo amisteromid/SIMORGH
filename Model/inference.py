@@ -9,6 +9,8 @@ import torch
 from Bio.Data.PDBData import protein_letters_3to1_extended
 from Bio.PDB import PDBIO, PDBParser
 from e3nn import o3
+from hdbscan import HDBSCAN
+from sklearn.metrics import pairwise_distances
 from tqdm import tqdm
 
 from architecture.config import config_model
@@ -170,7 +172,7 @@ def extract_topology_knn(xyz, frame_idx, k):
     return R, D, SCOV, SCOD, neighbor_indices
 
 
-def write_pdb_with_bfactor(pdb_file, predictions, output_file=None):
+def write_pdb_with_bfactor(pdb_file, predictions, output_file=None, cluster_ids=None):
     if output_file is None:
         output_file = pdb_file
 
@@ -197,6 +199,9 @@ def write_pdb_with_bfactor(pdb_file, predictions, output_file=None):
                 ordered_keys.append(res_key)
 
     key_to_pred = {key: predictions[i] for i, key in enumerate(ordered_keys)}
+    key_to_cluster = None
+    if cluster_ids is not None:
+        key_to_cluster = {key: cluster_ids[i] for i, key in enumerate(ordered_keys)}
 
     # ── write back ────────────────────────────────────────────────────────────
     parser = PDBParser(QUIET=True)
@@ -211,12 +216,63 @@ def write_pdb_with_bfactor(pdb_file, predictions, output_file=None):
                 if res_key not in key_to_pred:
                     continue  # insertion code / HETATM etc.
                 pred_val = float(key_to_pred[res_key])
+                cluster_val = (
+                    float(key_to_cluster[res_key]) if key_to_cluster else 1.0
+                )
                 for atom in residue:
                     atom.set_bfactor(round(pred_val, 2))
+                    if key_to_cluster:
+                        atom.set_occupancy(cluster_val)
 
     io = PDBIO()
     io.set_structure(structure)
     io.save(output_file)
+
+
+def cluster_predictions(xyz, probs, cutoff=0.4, min_cluster_size=25, min_samples=10, alpha=1.5):
+    """
+    Cluster high-probability residues using HDBSCAN with a probability-weighted
+    distance metric.  Returns an array of cluster IDs (int) with the same length
+    as the number of residues.  -1 means noise / not assigned.
+
+    xyz   : [n_residues, 2, 3]  CA/CB coords for the first frame
+    probs : [n_residues]        sigmoid probabilities (0-1)
+    """
+    probs = np.asarray(probs).flatten()
+    n_res = xyz.shape[0]
+
+    labels = np.full(n_res, -1, dtype=int)
+
+    # ── keep only residues above the cutoff ──────────────────────────────────
+    mask = probs > cutoff
+    if mask.sum() == 0:
+        warnings.warn(f"No residues above cutoff {cutoff}; skipping clustering.")
+        return labels
+
+    coords = xyz[mask, 0, :]  # CA coords [n_selected, 3]
+    sel_probs = probs[mask]   # [n_selected]
+
+    # ── probability-weighted distance matrix ─────────────────────────────────
+    def metric(p, q):
+        p_coords, p_prob = p[:-1], p[-1]
+        q_coords, q_prob = q[:-1], q[-1]
+        return alpha / (p_prob * q_prob) + np.linalg.norm(p_coords - q_coords)
+
+    coords_with_probs = np.hstack((coords, sel_probs.reshape(-1, 1)))
+    dist = pairwise_distances(coords_with_probs, metric=metric)
+
+    # ── HDBSCAN ──────────────────────────────────────────────────────────────
+    clusterer = HDBSCAN(
+        min_cluster_size=min_cluster_size,
+        min_samples=min_samples,
+        metric="precomputed",
+    )
+    sub_labels = clusterer.fit_predict(dist)
+
+    # ── scatter labels back to full residue array ────────────────────────────
+    sel_idx = np.where(mask)[0]
+    labels[sel_idx] = sub_labels
+    return labels
 
 
 if __name__ == "__main__":
@@ -225,6 +281,11 @@ if __name__ == "__main__":
     parser.add_argument("--model2", required=True, help="Path to the SetModel checkpoint (.pt)")
     parser.add_argument("-i", "--input", required=True, help="Input PDB file")
     parser.add_argument("-o", "--output", required=True, help="Output PDB file (with predictions in B-factor)")
+    parser.add_argument("--cluster", action="store_true", help="Run HDBSCAN clustering on predictions and write cluster IDs to occupancy")
+    parser.add_argument("--cutoff", type=float, default=0.4, help="Probability cutoff for clustering (default: 0.4)")
+    parser.add_argument("--min-cluster-size", type=int, default=25, help="HDBSCAN min_cluster_size (default: 25)")
+    parser.add_argument("--min-samples", type=int, default=10, help="HDBSCAN min_samples (default: 10)")
+    parser.add_argument("--alpha", type=float, default=1.5, help="Probability weight in custom distance metric (default: 1.5)")
     args = parser.parse_args()
 
     device = torch.device(device)
@@ -305,5 +366,22 @@ if len(xyz) > 1:
     # evaluate with setmodel
     z = model2.forward(emb_list)
 
-write_pdb_with_bfactor(pdb_file, torch.sigmoid(z).cpu(), out_file)
+probs = torch.sigmoid(z).cpu().numpy().flatten()
+
+# ── optional HDBSCAN clustering ────────────────────────────────────────────
+cluster_ids = None
+if args.cluster:
+    cluster_ids = cluster_predictions(
+        xyz[0],               # use first frame's CA/CB coords
+        probs,
+        cutoff=args.cutoff,
+        min_cluster_size=args.min_cluster_size,
+        min_samples=args.min_samples,
+        alpha=args.alpha,
+    )
+    n_clusters = len(set(cluster_ids) - {-1})
+    print(f"Clustering: {n_clusters} binding-site cluster(s) found "
+          f"({(cluster_ids == -1).sum()} residue(s) as noise)")
+
+write_pdb_with_bfactor(pdb_file, probs, out_file, cluster_ids=cluster_ids)
 print(f"Predictions written to {out_file}")
