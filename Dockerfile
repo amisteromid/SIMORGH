@@ -14,10 +14,9 @@ ARG GAFL_COMMIT=018247ade22812407b6dfb9093944f442a606aa0
 ARG BBFLOW_COMMIT=f8628c950bbcd577bf294338c9ef330ed4cb9bbd
 
 # Build-time tools only
-RUN apt-get update && apt-get install -y --no-install-recommends \
-        build-essential \
-        git \
-    && rm -rf /var/lib/apt/lists/*
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+    apt-get update && apt-get install -y --no-install-recommends build-essential git
 
 # Enforce numpy<2 across every subsequent pip install: GATr's (patched)
 # metadata requires it, but unpinned transitive deps would otherwise
@@ -58,9 +57,10 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 # Cloned into /opt (not /tmp): bbflow/gafl's setup.py rely on implicit
 # namespace packages, which only resolve correctly with an editable
 # install (`pip install -e .`), so the source tree must persist at runtime.
-RUN git clone \
-        https://github.com/graeter-group/bbflow.git \
-        /opt/bbflow
+RUN git init /opt/bbflow && cd /opt/bbflow && \
+    git remote add origin https://github.com/graeter-group/bbflow.git && \
+    git fetch --depth 1 origin "${BBFLOW_COMMIT}" && \
+    git checkout FETCH_HEAD
 
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install -r /opt/bbflow/install_utils/requirements.txt
@@ -68,11 +68,10 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 # ------------------------------------------------------------
 # GAFL
 # ------------------------------------------------------------
-RUN git clone \
-        https://github.com/hits-mli/gafl.git \
-        /opt/gafl && \
-    cd /opt/gafl && \
-    git checkout "${GAFL_COMMIT}" && \
+RUN git init /opt/gafl && cd /opt/gafl && \
+    git remote add origin https://github.com/hits-mli/gafl.git && \
+    git fetch --depth 1 origin "${GAFL_COMMIT}" && \
+    git checkout FETCH_HEAD && \
     bash install_gatr.sh && \
     SITE_PACKAGES=$(python3 -c "import sysconfig; print(sysconfig.get_paths()['purelib'])") && \
     METADATA=$(ls "${SITE_PACKAGES}"/gatr-*.dist-info/METADATA) && \
@@ -119,8 +118,12 @@ FROM pytorch/pytorch:2.4.1-cuda12.1-cudnn9-runtime AS runtime
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
+RUN conda clean -afy && \
+find /opt/conda -name '__pycache__' -type d -prune -exec rm -rf {} + && \
+find /opt/conda -name '*.pyc' -delete
 COPY --from=builder /opt/conda /opt/conda
 # gafl/bbflow are installed editable, so their source trees must ship too
+RUN rm -rf /opt/gafl/.git /opt/bbflow/.git
 COPY --from=builder /opt/gafl /opt/gafl
 COPY --from=builder /opt/bbflow /opt/bbflow
 
