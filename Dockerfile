@@ -26,19 +26,27 @@ RUN python -m pip install --upgrade pip setuptools wheel && \
         torchaudio==2.4.1 \
         --index-url https://download.pytorch.org/whl/cu121
 
-# ------------------------------------------------------------
-# Simorgh dependencies
-# ------------------------------------------------------------
+# ============================================================
+# SIMORGH
+# ============================================================
+
+WORKDIR /opt/SIMORGH
+
+COPY . /opt/SIMORGH
+
 RUN python -m pip install \
     e3nn \
-    glob2 \
+    biopython \
     tqdm \
+    scipy \
+    scikit-learn \
     h5py \
-    numpy==2.2.6 \
-    scipy==1.15.3 \
-    wandb \
-    scikit-learn==1.7.2 \
-    biopython
+    py3Dmol \
+    hdbscan
+
+RUN test -f /opt/SIMORGH/Model/inference.py && \
+    test -f /opt/SIMORGH/model_4.pt && \
+    test -f /opt/SIMORGH/model_44.pt
 
 # ------------------------------------------------------------
 # PyTorch Geometric / torch-scatter
