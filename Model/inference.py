@@ -366,7 +366,7 @@ if len(xyz) > 1:
     # evaluate with setmodel
     z = model2.forward(emb_list)
 
-probs = torch.sigmoid(z).cpu().numpy().flatten()
+probs = torch.sigmoid(z).detach().cpu().numpy().flatten()
 
 # ── optional HDBSCAN clustering ────────────────────────────────────────────
 cluster_ids = None
