@@ -18,6 +18,7 @@ from architecture.model_gnn import Model
 from architecture.model_set import SetModel
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
+print (f"{device} is being used...")
 
 k = 32
 aa_idx = {
@@ -172,7 +173,7 @@ def extract_topology_knn(xyz, frame_idx, k):
     return R, D, SCOV, SCOD, neighbor_indices
 
 
-def write_pdb_with_bfactor(pdb_file, predictions, output_file=None, cluster_ids=None):
+def write_pdb_with_bfactor(pdb_file, predictions, output_file=None, cluster_ids=None, cluster_output_file=None):
     if output_file is None:
         output_file = pdb_file
 
@@ -201,32 +202,37 @@ def write_pdb_with_bfactor(pdb_file, predictions, output_file=None, cluster_ids=
     key_to_pred = {key: predictions[i] for i, key in enumerate(ordered_keys)}
     key_to_cluster = None
     if cluster_ids is not None:
-        key_to_cluster = {key: cluster_ids[i] for i, key in enumerate(ordered_keys)}
+        # noise (-1) -> 0, real clusters (0,1,2,...) -> 1,2,3,...
+        key_to_cluster = {
+            key: (0 if cluster_ids[i] == -1 else int(cluster_ids[i]) + 1)
+            for i, key in enumerate(ordered_keys)
+        }
 
-    # ── write back ────────────────────────────────────────────────────────────
-    parser = PDBParser(QUIET=True)
-    structure = parser.get_structure("protein", pdb_file)
+    def _write(bfactor_map, out_path):
+        parser = PDBParser(QUIET=True)
+        structure = parser.get_structure("protein", pdb_file)
+        for model in structure:
+            for chain in model:
+                for residue in chain:
+                    if "CA" not in residue:
+                        continue
+                    res_key = (residue.id[1], chain.id)
+                    if res_key not in bfactor_map:
+                        continue
+                    val = float(bfactor_map[res_key])
+                    for atom in residue:
+                        atom.set_bfactor(round(val, 2))
+        io = PDBIO()
+        io.set_structure(structure)
+        io.save(out_path)
 
-    for model in structure:
-        for chain in model:
-            for residue in chain:
-                if "CA" not in residue:
-                    continue
-                res_key = (residue.id[1], chain.id)  # (seq_num, chain_id)
-                if res_key not in key_to_pred:
-                    continue  # insertion code / HETATM etc.
-                pred_val = float(key_to_pred[res_key])
-                cluster_val = (
-                    float(key_to_cluster[res_key]) if key_to_cluster else 1.0
-                )
-                for atom in residue:
-                    atom.set_bfactor(round(pred_val, 2))
-                    if key_to_cluster:
-                        atom.set_occupancy(cluster_val)
+    _write(key_to_pred, output_file)
 
-    io = PDBIO()
-    io.set_structure(structure)
-    io.save(output_file)
+    if key_to_cluster is not None:
+        if cluster_output_file is None:
+            root, ext = os.path.splitext(output_file)
+            cluster_output_file = f"{root}_clusters{ext}"
+        _write(key_to_cluster, cluster_output_file)
 
 
 def cluster_predictions(xyz, probs, cutoff=0.4, min_cluster_size=25, min_samples=10, alpha=1.5):
