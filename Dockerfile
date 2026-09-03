@@ -53,6 +53,7 @@ RUN test -f /opt/SIMORGH/Model/inference.py && \
 # Must match torch 2.4.1 + CUDA 12.1
 # ------------------------------------------------------------
 RUN python -m pip install \
+    --no-build-isolation \
     torch-scatter \
     -f https://data.pyg.org/whl/torch-2.4.1+cu121.html && \
     python -m pip install \
@@ -102,6 +103,7 @@ RUN python -m pip install --force-reinstall \
     torchaudio==2.4.1 \
     --index-url https://download.pytorch.org/whl/cu121 && \
     python -m pip install --force-reinstall \
+    --no-build-isolation \
     torch-scatter \
     -f https://data.pyg.org/whl/torch-2.4.1+cu121.html
 

@@ -18,7 +18,7 @@ from architecture.model_gnn import Model
 from architecture.model_set import SetModel
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
-print (f"{device} is being used...")
+print(f"{device} is being used...")
 
 k = 32
 aa_idx = {
@@ -287,7 +287,8 @@ if __name__ == "__main__":
     parser.add_argument("--model2", required=True, help="Path to the SetModel checkpoint (.pt)")
     parser.add_argument("-i", "--input", required=True, help="Input PDB file")
     parser.add_argument("-o", "--output", required=True, help="Output PDB file (with predictions in B-factor)")
-    parser.add_argument("--cluster", action="store_true", help="Run HDBSCAN clustering on predictions and write cluster IDs to occupancy")
+    parser.add_argument("--cluster", action="store_true", help="Run HDBSCAN clustering on predictions and write cluster IDs to B-factor")
+    parser.add_argument("--cluster-output", default=None, help="Optional output PDB file for cluster IDs (default: <output>_clusters.pdb)")
     parser.add_argument("--cutoff", type=float, default=0.4, help="Probability cutoff for clustering (default: 0.4)")
     parser.add_argument("--min-cluster-size", type=int, default=25, help="HDBSCAN min_cluster_size (default: 25)")
     parser.add_argument("--min-samples", type=int, default=10, help="HDBSCAN min_samples (default: 10)")
@@ -389,5 +390,11 @@ if args.cluster:
     print(f"Clustering: {n_clusters} binding-site cluster(s) found "
           f"({(cluster_ids == -1).sum()} residue(s) as noise)")
 
-write_pdb_with_bfactor(pdb_file, probs, out_file, cluster_ids=cluster_ids)
+write_pdb_with_bfactor(
+    pdb_file,
+    probs,
+    out_file,
+    cluster_ids=cluster_ids,
+    cluster_output_file=args.cluster_output,
+)
 print(f"Predictions written to {out_file}")
