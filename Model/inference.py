@@ -282,6 +282,105 @@ def cluster_predictions(xyz, probs, cutoff=0.4, min_cluster_size=25, min_samples
     return labels
 
 
+def render_pdb_html(prob_pdb, cluster_pdb, output_html,
+                    colors=None, width=600, height=500, style='sphere'):
+    """
+    Build a standalone HTML file with two side-by-side py3Dmol views:
+      - left:  predicted probability (B-factor gradient)
+      - right: cluster assignment (discrete colors, cluster 0 = noise = gray)
+
+    style: 'sphere', 'surface', or 'cartoon'
+    """
+    if colors is None:
+        colors = [
+            '#FF3333',  # Vivid Red
+            '#1E90FF',  # Dodger Blue
+            '#FF1493',  # Deep Pink
+            '#FFD700',  # Gold
+            '#00CED1',  # Dark Turquoise
+            '#32CD32',  # Lime Green
+            '#FF8C00',  # Dark Orange
+            '#9932CC',  # Dark Orchid
+        ]
+
+    with open(prob_pdb) as f:
+        prob_data = f.read()
+    with open(cluster_pdb) as f:
+        cluster_data = f.read()
+
+    # collect distinct cluster ids present (0 = noise)
+    cluster_vals = set()
+    for line in cluster_data.splitlines():
+        if line.startswith("ATOM"):
+            cluster_vals.add(int(float(line[60:66])))
+    cluster_vals = sorted(cluster_vals)
+
+    # ── probability view ──────────────────────────────────────────────────
+    view1 = py3Dmol.view(width=width, height=height)
+    view1.addModel(prob_data, 'pdb')
+    if style == 'surface':
+        view1.setStyle({}, {'cartoon': {'colorscheme': {'prop': 'b', 'gradient': 'linear_#3939b8_#d3d4d4_#e93939', 'min': 0, 'max': 1}}})
+        view1.addSurface(py3Dmol.VDW, {'colorscheme': {'prop': 'b', 'gradient': 'linear_#3939b8_#d3d4d4_#e93939', 'min': 0, 'max': 1}})
+    else:
+        view1.setStyle(
+            {},
+            {style: {
+                'colorscheme': {
+                    'prop': 'b',
+                    'gradient': 'linear_#3939b8_#d3d4d4_#e93939',
+                    'min': 0,
+                    'max': 1
+                }
+            }}
+        )
+    view1.zoomTo()
+
+    # ── cluster view ─────────────────────────────────────────────────────
+    view2 = py3Dmol.view(width=width, height=height)
+    view2.addModel(cluster_data, 'pdb')
+    if style == 'surface':
+        view2.setStyle({'b': 0}, {'cartoon': {'color': '#808080'}})
+        view2.addSurface(py3Dmol.VDW, {'color': '#808080'}, {'b': 0})
+        for cid in cluster_vals:
+            if cid == 0:
+                continue
+            color = colors[(cid - 1) % len(colors)]
+            view2.addStyle({'b': cid}, {'cartoon': {'color': color}})
+            view2.addSurface(py3Dmol.VDW, {'color': color}, {'b': cid})
+    else:
+        view2.setStyle({'b': 0}, {style: {'color': '#808080'}})  # noise
+        for cid in cluster_vals:
+            if cid == 0:
+                continue
+            color = colors[(cid - 1) % len(colors)]
+            view2.addStyle({'b': cid}, {style: {'color': color}})
+    view2.zoomTo()
+
+    html = f"""<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>SIMORGH Visualization</title>
+<script src="https://3dmol.org/build/3Dmol-min.js"></script>
+</head>
+<body>
+<div style="display:flex; gap:20px;">
+  <div>
+    <h3 style="text-align:center;">Predicted Probability</h3>
+    {view1._make_html()}
+  </div>
+  <div>
+    <h3 style="text-align:center;">Clusters</h3>
+    {view2._make_html()}
+  </div>
+</div>
+</body>
+</html>
+"""
+    with open(output_html, "w") as f:
+        f.write(html)
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="SIMORGH inference on a PDB file")
     parser.add_argument("--model1", required=True, help="Path to the GNN model checkpoint (.pt)")
@@ -393,109 +492,9 @@ if __name__ == "__main__":
     write_pdb_with_bfactor(pdb_file, probs, out_file, cluster_ids=cluster_ids)
     print(f"Predictions written to {out_file}")
 
-
-def render_pdb_html(prob_pdb, cluster_pdb, output_html,
-                    colors=None, width=600, height=500, style='sphere'):
-    """
-    Build a standalone HTML file with two side-by-side py3Dmol views:
-      - left:  predicted probability (B-factor gradient)
-      - right: cluster assignment (discrete colors, cluster 0 = noise = gray)
-
-    style: 'sphere', 'surface', or 'cartoon'
-    """
-    if colors is None:
-        colors = [
-            '#FF3333',  # Vivid Red
-            '#1E90FF',  # Dodger Blue
-            '#FF1493',  # Deep Pink
-            '#FFD700',  # Gold
-            '#00CED1',  # Dark Turquoise
-            '#32CD32',  # Lime Green
-            '#FF8C00',  # Dark Orange
-            '#9932CC',  # Dark Orchid
-        ]
-
-    with open(prob_pdb) as f:
-        prob_data = f.read()
-    with open(cluster_pdb) as f:
-        cluster_data = f.read()
-
-    # collect distinct cluster ids present (0 = noise)
-    cluster_vals = set()
-    for line in cluster_data.splitlines():
-        if line.startswith("ATOM"):
-            cluster_vals.add(int(float(line[60:66])))
-    cluster_vals = sorted(cluster_vals)
-
-    # ── probability view ──────────────────────────────────────────────────
-    view1 = py3Dmol.view(width=width, height=height)
-    view1.addModel(prob_data, 'pdb')
-    if style == 'surface':
-        view1.setStyle({}, {'cartoon': {'colorscheme': {'prop': 'b', 'gradient': 'linear_#3939b8_#d3d4d4_#e93939', 'min': 0, 'max': 1}}})
-        view1.addSurface(py3Dmol.VDW, {'colorscheme': {'prop': 'b', 'gradient': 'linear_#3939b8_#d3d4d4_#e93939', 'min': 0, 'max': 1}})
-    else:
-        view1.setStyle(
-            {},
-            {style: {
-                'colorscheme': {
-                    'prop': 'b',
-                    'gradient': 'linear_#3939b8_#d3d4d4_#e93939',
-                    'min': 0,
-                    'max': 1
-                }
-            }}
-        )
-    view1.zoomTo()
-
-    # ── cluster view ─────────────────────────────────────────────────────
-    view2 = py3Dmol.view(width=width, height=height)
-    view2.addModel(cluster_data, 'pdb')
-    if style == 'surface':
-        view2.setStyle({'b': 0}, {'cartoon': {'color': '#808080'}})
-        view2.addSurface(py3Dmol.VDW, {'color': '#808080'}, {'b': 0})
-        for cid in cluster_vals:
-            if cid == 0:
-                continue
-            color = colors[(cid - 1) % len(colors)]
-            view2.addStyle({'b': cid}, {'cartoon': {'color': color}})
-            view2.addSurface(py3Dmol.VDW, {'color': color}, {'b': cid})
-    else:
-        view2.setStyle({'b': 0}, {style: {'color': '#808080'}})  # noise
-        for cid in cluster_vals:
-            if cid == 0:
-                continue
-            color = colors[(cid - 1) % len(colors)]
-            view2.addStyle({'b': cid}, {style: {'color': color}})
-    view2.zoomTo()
-
-    html = f"""<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8">
-<title>SIMORGH Visualization</title>
-<script src="https://3dmol.org/build/3Dmol-min.js"></script>
-</head>
-<body>
-<div style="display:flex; gap:20px;">
-  <div>
-    <h3 style="text-align:center;">Predicted Probability</h3>
-    {view1._make_html()}
-  </div>
-  <div>
-    <h3 style="text-align:center;">Clusters</h3>
-    {view2._make_html()}
-  </div>
-</div>
-</body>
-</html>
-"""
-    with open(output_html, "w") as f:
-        f.write(html)
-
-
-cluster_out_file = None
-if cluster_ids is not None:
-    root, ext = os.path.splitext(out_file)
-    cluster_out_file = f"{root}_clusters{ext}"
-render_pdb_html(out_file, cluster_out_file, "viz.html")
-print("Visualization written to viz.html")
+    cluster_out_file = None
+    if cluster_ids is not None:
+        root, ext = os.path.splitext(out_file)
+        cluster_out_file = f"{root}_clusters{ext}"
+    render_pdb_html(out_file, cluster_out_file, "viz.html")
+    print("Visualization written to viz.html")
