@@ -392,6 +392,9 @@ if __name__ == "__main__":
     parser.add_argument("--min-cluster-size", type=int, default=25, help="HDBSCAN min_cluster_size (default: 25)")
     parser.add_argument("--min-samples", type=int, default=10, help="HDBSCAN min_samples (default: 10)")
     parser.add_argument("--alpha", type=float, default=1.5, help="Probability weight in custom distance metric (default: 1.5)")
+    parser.add_argument("--visualize", action="store_true", help="Generate an HTML visualization of predictions and clusters")
+    parser.add_argument("--viz-style", choices=["sphere", "surface", "cartoon"], default="sphere", help="Visualization style (default: sphere)")
+    parser.add_argument("--viz-output", type=str, default=None, help="Output HTML file path (default: <output_basename>_viz.html)")
     args = parser.parse_args()
 
     device = torch.device(device)
@@ -492,9 +495,15 @@ if __name__ == "__main__":
     write_pdb_with_bfactor(pdb_file, probs, out_file, cluster_ids=cluster_ids)
     print(f"Predictions written to {out_file}")
 
-    cluster_out_file = None
-    if cluster_ids is not None:
-        root, ext = os.path.splitext(out_file)
-        cluster_out_file = f"{root}_clusters{ext}"
-    render_pdb_html(out_file, cluster_out_file, "viz.html")
-    print("Visualization written to viz.html")
+    # ── optional HTML visualization ────────────────────────────────────────
+    if args.visualize:
+        if not args.cluster:
+            print("Warning: --visualize requires --cluster to produce a cluster view. "
+                  "Skipping visualization.")
+        else:
+            root, ext = os.path.splitext(out_file)
+            cluster_out_file = f"{root}_clusters{ext}"
+            viz_output = args.viz_output or f"{root}_viz.html"
+            render_pdb_html(out_file, cluster_out_file, viz_output,
+                            style=args.viz_style)
+            print(f"Visualization written to {viz_output}")
