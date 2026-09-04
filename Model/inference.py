@@ -12,13 +12,14 @@ from e3nn import o3
 from hdbscan import HDBSCAN
 from sklearn.metrics import pairwise_distances
 from tqdm import tqdm
+import py3Dmol
 
 from architecture.config import config_model
 from architecture.model_gnn import Model
 from architecture.model_set import SetModel
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
-print(f"{device} is being used...")
+print (f"{device} is being used...")
 
 k = 32
 aa_idx = {
@@ -287,8 +288,7 @@ if __name__ == "__main__":
     parser.add_argument("--model2", required=True, help="Path to the SetModel checkpoint (.pt)")
     parser.add_argument("-i", "--input", required=True, help="Input PDB file")
     parser.add_argument("-o", "--output", required=True, help="Output PDB file (with predictions in B-factor)")
-    parser.add_argument("--cluster", action="store_true", help="Run HDBSCAN clustering on predictions and write cluster IDs to B-factor")
-    parser.add_argument("--cluster-output", default=None, help="Optional output PDB file for cluster IDs (default: <output>_clusters.pdb)")
+    parser.add_argument("--cluster", action="store_true", help="Run HDBSCAN clustering on predictions and write cluster IDs to occupancy")
     parser.add_argument("--cutoff", type=float, default=0.4, help="Probability cutoff for clustering (default: 0.4)")
     parser.add_argument("--min-cluster-size", type=int, default=25, help="HDBSCAN min_cluster_size (default: 25)")
     parser.add_argument("--min-samples", type=int, default=10, help="HDBSCAN min_samples (default: 10)")
@@ -390,11 +390,95 @@ if args.cluster:
     print(f"Clustering: {n_clusters} binding-site cluster(s) found "
           f"({(cluster_ids == -1).sum()} residue(s) as noise)")
 
-write_pdb_with_bfactor(
-    pdb_file,
-    probs,
-    out_file,
-    cluster_ids=cluster_ids,
-    cluster_output_file=args.cluster_output,
-)
+write_pdb_with_bfactor(pdb_file, probs, out_file, cluster_ids=cluster_ids)
 print(f"Predictions written to {out_file}")
+
+
+def render_pdb_html(prob_pdb, cluster_pdb, output_html,
+                     colors=None, width=600, height=500):
+    """
+    Build a standalone HTML file with two side-by-side py3Dmol views:
+      - left:  predicted probability (B-factor gradient)
+      - right: cluster assignment (discrete colors, cluster 0 = noise = gray)
+    """
+    if colors is None:
+        colors = [
+            '#FF3333',  # Vivid Red
+            '#1E90FF',  # Dodger Blue
+            '#FF1493',  # Deep Pink
+            '#FFD700',  # Gold
+            '#00CED1',  # Dark Turquoise
+            '#32CD32',  # Lime Green
+            '#FF8C00',  # Dark Orange
+            '#9932CC',  # Dark Orchid
+        ]
+
+    with open(prob_pdb) as f:
+        prob_data = f.read()
+    with open(cluster_pdb) as f:
+        cluster_data = f.read()
+
+    # collect distinct cluster ids present (0 = noise)
+    cluster_vals = set()
+    for line in cluster_data.splitlines():
+        if line.startswith("ATOM"):
+            cluster_vals.add(int(float(line[60:66])))
+    cluster_vals = sorted(cluster_vals)
+
+    # ── probability view ──────────────────────────────────────────────────
+    view1 = py3Dmol.view(width=width, height=height)
+    view1.addModel(prob_data, 'pdb')
+    view1.setStyle(
+        {},
+        {'sphere': {
+            'colorscheme': {
+                'prop': 'b',
+                'gradient': 'linear_#3939b8_#d3d4d4_#e93939',
+                'min': 0,
+                'max': 1
+            }
+        }}
+    )
+    view1.zoomTo()
+
+    # ── cluster view ─────────────────────────────────────────────────────
+    view2 = py3Dmol.view(width=width, height=height)
+    view2.addModel(cluster_data, 'pdb')
+    view2.setStyle({'b': 0}, {'sphere': {'color': '#808080'}})  # noise
+    for cid in cluster_vals:
+        if cid == 0:
+            continue
+        color = colors[(cid - 1) % len(colors)]
+        view2.addStyle({'b': cid}, {'sphere': {'color': color}})
+    view2.zoomTo()
+
+    html = f"""<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>SIMORGH Visualization</title>
+<script src="https://3dmol.org/build/3Dmol-min.js"></script>
+</head>
+<body>
+<div style="display:flex; gap:20px;">
+  <div>
+    <h3 style="text-align:center;">Predicted Probability</h3>
+    {view1._make_html()}
+  </div>
+  <div>
+    <h3 style="text-align:center;">Clusters</h3>
+    {view2._make_html()}
+  </div>
+</div>
+</body>
+</html>
+"""
+    with open(output_html, "w") as f:
+        f.write(html)
+
+cluster_out_file = None
+if cluster_ids is not None:
+    root, ext = os.path.splitext(out_file)
+    cluster_out_file = f"{root}_clusters{ext}"
+render_pdb_html(out_file, cluster_out_file, "viz.html")
+print(f"Visualization written to {html_out}")
