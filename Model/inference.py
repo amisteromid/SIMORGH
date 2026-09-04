@@ -282,12 +282,13 @@ def cluster_predictions(xyz, probs, cutoff=0.4, min_cluster_size=25, min_samples
     return labels
 
 
-def render_pdb_html(prob_pdb, cluster_pdb, output_html,
+def render_pdb_html(prob_pdb, cluster_pdb=None, output_html=None,
                     colors=None, width=600, height=500, style='sphere'):
     """
-    Build a standalone HTML file with two side-by-side py3Dmol views:
-      - left:  predicted probability (B-factor gradient)
-      - right: cluster assignment (discrete colors, cluster 0 = noise = gray)
+    Build a standalone HTML file with py3Dmol view(s):
+      - always: predicted probability (B-factor gradient)
+      - if cluster_pdb is given: cluster assignment side-by-side
+        (discrete colors, cluster 0 = noise = gray)
 
     style: 'sphere', 'surface', or 'cartoon'
     """
@@ -305,15 +306,6 @@ def render_pdb_html(prob_pdb, cluster_pdb, output_html,
 
     with open(prob_pdb) as f:
         prob_data = f.read()
-    with open(cluster_pdb) as f:
-        cluster_data = f.read()
-
-    # collect distinct cluster ids present (0 = noise)
-    cluster_vals = set()
-    for line in cluster_data.splitlines():
-        if line.startswith("ATOM"):
-            cluster_vals.add(int(float(line[60:66])))
-    cluster_vals = sorted(cluster_vals)
 
     # ── probability view ──────────────────────────────────────────────────
     view1 = py3Dmol.view(width=width, height=height)
@@ -335,26 +327,50 @@ def render_pdb_html(prob_pdb, cluster_pdb, output_html,
         )
     view1.zoomTo()
 
-    # ── cluster view ─────────────────────────────────────────────────────
-    view2 = py3Dmol.view(width=width, height=height)
-    view2.addModel(cluster_data, 'pdb')
-    if style == 'surface':
-        view2.setStyle({'b': 0}, {'cartoon': {'color': '#808080'}})
-        view2.addSurface(py3Dmol.VDW, {'color': '#808080'}, {'b': 0})
-        for cid in cluster_vals:
-            if cid == 0:
-                continue
-            color = colors[(cid - 1) % len(colors)]
-            view2.addStyle({'b': cid}, {'cartoon': {'color': color}})
-            view2.addSurface(py3Dmol.VDW, {'color': color}, {'b': cid})
-    else:
-        view2.setStyle({'b': 0}, {style: {'color': '#808080'}})  # noise
-        for cid in cluster_vals:
-            if cid == 0:
-                continue
-            color = colors[(cid - 1) % len(colors)]
-            view2.addStyle({'b': cid}, {style: {'color': color}})
-    view2.zoomTo()
+    prob_block = f"""
+  <div>
+    <h3 style="text-align:center;">Predicted Probability</h3>
+    {view1._make_html()}
+  </div>"""
+
+    # ── cluster view (only if cluster_pdb provided) ─────────────────────────
+    cluster_block = ""
+    if cluster_pdb is not None:
+        with open(cluster_pdb) as f:
+            cluster_data = f.read()
+
+        # collect distinct cluster ids present (0 = noise)
+        cluster_vals = set()
+        for line in cluster_data.splitlines():
+            if line.startswith("ATOM"):
+                cluster_vals.add(int(float(line[60:66])))
+        cluster_vals = sorted(cluster_vals)
+
+        view2 = py3Dmol.view(width=width, height=height)
+        view2.addModel(cluster_data, 'pdb')
+        if style == 'surface':
+            view2.setStyle({'b': 0}, {'cartoon': {'color': '#808080'}})
+            view2.addSurface(py3Dmol.VDW, {'color': '#808080'}, {'b': 0})
+            for cid in cluster_vals:
+                if cid == 0:
+                    continue
+                color = colors[(cid - 1) % len(colors)]
+                view2.addStyle({'b': cid}, {'cartoon': {'color': color}})
+                view2.addSurface(py3Dmol.VDW, {'color': color}, {'b': cid})
+        else:
+            view2.setStyle({'b': 0}, {style: {'color': '#808080'}})  # noise
+            for cid in cluster_vals:
+                if cid == 0:
+                    continue
+                color = colors[(cid - 1) % len(colors)]
+                view2.addStyle({'b': cid}, {style: {'color': color}})
+        view2.zoomTo()
+
+        cluster_block = f"""
+  <div>
+    <h3 style="text-align:center;">Clusters</h3>
+    {view2._make_html()}
+  </div>"""
 
     html = f"""<!DOCTYPE html>
 <html>
@@ -364,15 +380,7 @@ def render_pdb_html(prob_pdb, cluster_pdb, output_html,
 <script src="https://3dmol.org/build/3Dmol-min.js"></script>
 </head>
 <body>
-<div style="display:flex; gap:20px;">
-  <div>
-    <h3 style="text-align:center;">Predicted Probability</h3>
-    {view1._make_html()}
-  </div>
-  <div>
-    <h3 style="text-align:center;">Clusters</h3>
-    {view2._make_html()}
-  </div>
+<div style="display:flex; gap:20px;">{prob_block}{cluster_block}
 </div>
 </body>
 </html>
@@ -392,7 +400,7 @@ if __name__ == "__main__":
     parser.add_argument("--min-cluster-size", type=int, default=25, help="HDBSCAN min_cluster_size (default: 25)")
     parser.add_argument("--min-samples", type=int, default=10, help="HDBSCAN min_samples (default: 10)")
     parser.add_argument("--alpha", type=float, default=1.5, help="Probability weight in custom distance metric (default: 1.5)")
-    parser.add_argument("--visualize", action="store_true", help="Generate an HTML visualization of predictions and clusters")
+    parser.add_argument("--visualize", action="store_true", help="Generate an HTML visualization of predictions (and clusters if --cluster is set)")
     parser.add_argument("--viz-style", choices=["sphere", "surface", "cartoon"], default="sphere", help="Visualization style (default: sphere)")
     parser.add_argument("--viz-output", type=str, default=None, help="Output HTML file path (default: <output_basename>_viz.html)")
     args = parser.parse_args()
@@ -497,13 +505,8 @@ if __name__ == "__main__":
 
     # ── optional HTML visualization ────────────────────────────────────────
     if args.visualize:
-        if not args.cluster:
-            print("Warning: --visualize requires --cluster to produce a cluster view. "
-                  "Skipping visualization.")
-        else:
-            root, ext = os.path.splitext(out_file)
-            cluster_out_file = f"{root}_clusters{ext}"
-            viz_output = args.viz_output or f"{root}_viz.html"
-            render_pdb_html(out_file, cluster_out_file, viz_output,
-                            style=args.viz_style)
-            print(f"Visualization written to {viz_output}")
+        root, ext = os.path.splitext(out_file)
+        viz_output = args.viz_output or f"{root}_viz.html"
+        cluster_out_file = f"{root}_clusters{ext}" if args.cluster else None
+        render_pdb_html(out_file, cluster_out_file, viz_output, style=args.viz_style)
+        print(f"Visualization written to {viz_output}")
