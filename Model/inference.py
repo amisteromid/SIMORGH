@@ -368,30 +368,30 @@ if __name__ == "__main__":
                     get_mor=True,
                 )
                 emb_list.append(emb)
-if len(xyz) > 1:
-    emb_list = torch.stack(emb_list, dim=1)
-    # evaluate with setmodel
-    z = model2.forward(emb_list)
+    if len(xyz) > 1:
+        emb_list = torch.stack(emb_list, dim=1)
+        # evaluate with setmodel
+        z = model2.forward(emb_list)
 
-probs = torch.sigmoid(z).detach().cpu().numpy().flatten()
+    probs = torch.sigmoid(z).detach().cpu().numpy().flatten()
 
-# ── optional HDBSCAN clustering ────────────────────────────────────────────
-cluster_ids = None
-if args.cluster:
-    cluster_ids = cluster_predictions(
-        xyz[0],               # use first frame's CA/CB coords
-        probs,
-        cutoff=args.cutoff,
-        min_cluster_size=args.min_cluster_size,
-        min_samples=args.min_samples,
-        alpha=args.alpha,
-    )
-    n_clusters = len(set(cluster_ids) - {-1})
-    print(f"Clustering: {n_clusters} binding-site cluster(s) found "
-          f"({(cluster_ids == -1).sum()} residue(s) as noise)")
+    # ── optional HDBSCAN clustering ────────────────────────────────────────────
+    cluster_ids = None
+    if args.cluster:
+        cluster_ids = cluster_predictions(
+            xyz[0],               # use first frame's CA/CB coords
+            probs,
+            cutoff=args.cutoff,
+            min_cluster_size=args.min_cluster_size,
+            min_samples=args.min_samples,
+            alpha=args.alpha,
+        )
+        n_clusters = len(set(cluster_ids) - {-1})
+        print(f"Clustering: {n_clusters} binding-site cluster(s) found "
+              f"({(cluster_ids == -1).sum()} residue(s) as noise)")
 
-write_pdb_with_bfactor(pdb_file, probs, out_file, cluster_ids=cluster_ids)
-print(f"Predictions written to {out_file}")
+    write_pdb_with_bfactor(pdb_file, probs, out_file, cluster_ids=cluster_ids)
+    print(f"Predictions written to {out_file}")
 
 
 def render_pdb_html(prob_pdb, cluster_pdb, output_html,
