@@ -19,7 +19,7 @@ from architecture.model_gnn import Model
 from architecture.model_set import SetModel
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
-print (f"{device} is being used...")
+print(f"{device} is being used...")
 
 k = 32
 aa_idx = {
@@ -282,120 +282,8 @@ def cluster_predictions(xyz, probs, cutoff=0.4, min_cluster_size=25, min_samples
     return labels
 
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="SIMORGH inference on a PDB file")
-    parser.add_argument("--model1", required=True, help="Path to the GNN model checkpoint (.pt)")
-    parser.add_argument("--model2", required=True, help="Path to the SetModel checkpoint (.pt)")
-    parser.add_argument("-i", "--input", required=True, help="Input PDB file")
-    parser.add_argument("-o", "--output", required=True, help="Output PDB file (with predictions in B-factor)")
-    parser.add_argument("--cluster", action="store_true", help="Run HDBSCAN clustering on predictions and write cluster IDs to occupancy")
-    parser.add_argument("--cutoff", type=float, default=0.4, help="Probability cutoff for clustering (default: 0.4)")
-    parser.add_argument("--min-cluster-size", type=int, default=25, help="HDBSCAN min_cluster_size (default: 25)")
-    parser.add_argument("--min-samples", type=int, default=10, help="HDBSCAN min_samples (default: 10)")
-    parser.add_argument("--alpha", type=float, default=1.5, help="Probability weight in custom distance metric (default: 1.5)")
-    args = parser.parse_args()
-
-    device = torch.device(device)
-    # Setup models
-    model1 = Model(config_model).to(device)
-    ckpt1 = torch.load(args.model1, map_location=device, weights_only=True)
-    model1.load_state_dict(
-        ckpt1["model_state_dict"] if "model_state_dict" in ckpt1 else ckpt1
-    )
-    model1.eval()
-    model2 = SetModel(config_model).to(device)
-    ckpt2 = torch.load(args.model2, map_location=device, weights_only=True)
-    model2.load_state_dict(
-        ckpt2["model_state_dict"] if "model_state_dict" in ckpt2 else ckpt2
-    )
-    model2.eval()
-
-    pdb_file = args.input
-    out_file = args.output
-    os.makedirs(os.path.dirname(os.path.abspath(out_file)), exist_ok=True)
-
-    # Setup data
-    seq, xyz = get_xyz(pdb_file)
-    if seq is None:
-        raise ValueError(f"Could not parse any models from {pdb_file}")
-    seq = torch.tensor([aa_idx[r] for r in seq], dtype=torch.long)
-    # GNN
-    emb_list = []
-    for frame_idx in tqdm(range(len(xyz)), leave=False):
-        # Extract features
-        R, D, SCOV, SCOD, nn_ids = extract_topology_knn(
-            xyz, frame_idx=frame_idx, k=k
-        )
-        # Spherical harmonics
-        R = o3.spherical_harmonics(
-            "1x1e+1x2e", torch.tensor(R), normalize=True, normalization="component"
-        )
-        SCOD = o3.spherical_harmonics(
-            "1x1e+1x2e",
-            torch.tensor(SCOD),
-            normalize=True,
-            normalization="component",
-        )
-        SCOV = o3.spherical_harmonics(
-            "1x1e+1x2e",
-            torch.tensor(SCOV),
-            normalize=True,
-            normalization="component",
-        )
-        # Edge
-        num_nodes, k = nn_ids.shape
-        edge_src = torch.arange(num_nodes).unsqueeze(1).repeat(1, k).flatten()
-        edge_dst = torch.tensor(nn_ids.flatten())
-        with torch.no_grad():
-            if len(xyz) == 1:
-                z = model1(
-                    [
-                        [seq.to(device), SCOV.to(device)],
-                        [SCOD.to(device), R.to(device), torch.tensor(D).to(device)],
-                    ],
-                    edge_src.to(device),
-                    edge_dst.to(device),
-                    get_mor=False,
-                )
-            else:
-                emb = model1(
-                    [
-                        [seq.to(device), SCOV.to(device)],
-                        [SCOD.to(device), R.to(device), torch.tensor(D).to(device)],
-                    ],
-                    edge_src.to(device),
-                    edge_dst.to(device),
-                    get_mor=True,
-                )
-                emb_list.append(emb)
-if len(xyz) > 1:
-    emb_list = torch.stack(emb_list, dim=1)
-    # evaluate with setmodel
-    z = model2.forward(emb_list)
-
-probs = torch.sigmoid(z).detach().cpu().numpy().flatten()
-
-# ── optional HDBSCAN clustering ────────────────────────────────────────────
-cluster_ids = None
-if args.cluster:
-    cluster_ids = cluster_predictions(
-        xyz[0],               # use first frame's CA/CB coords
-        probs,
-        cutoff=args.cutoff,
-        min_cluster_size=args.min_cluster_size,
-        min_samples=args.min_samples,
-        alpha=args.alpha,
-    )
-    n_clusters = len(set(cluster_ids) - {-1})
-    print(f"Clustering: {n_clusters} binding-site cluster(s) found "
-          f"({(cluster_ids == -1).sum()} residue(s) as noise)")
-
-write_pdb_with_bfactor(pdb_file, probs, out_file, cluster_ids=cluster_ids)
-print(f"Predictions written to {out_file}")
-
-
 def render_pdb_html(prob_pdb, cluster_pdb, output_html,
-                     colors=None, width=600, height=500, style='sphere'):
+                    colors=None, width=600, height=500, style='sphere'):
     """
     Build a standalone HTML file with two side-by-side py3Dmol views:
       - left:  predicted probability (B-factor gradient)
@@ -492,9 +380,130 @@ def render_pdb_html(prob_pdb, cluster_pdb, output_html,
     with open(output_html, "w") as f:
         f.write(html)
 
-cluster_out_file = None
-if cluster_ids is not None:
-    root, ext = os.path.splitext(out_file)
-    cluster_out_file = f"{root}_clusters{ext}"
-render_pdb_html(out_file, cluster_out_file, "viz.html")
-print(f"Visualization written to {html_out}")
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="SIMORGH inference on a PDB file")
+    parser.add_argument("--model1", required=True, help="Path to the GNN model checkpoint (.pt)")
+    parser.add_argument("--model2", required=True, help="Path to the SetModel checkpoint (.pt)")
+    parser.add_argument("-i", "--input", required=True, help="Input PDB file")
+    parser.add_argument("-o", "--output", required=True, help="Output PDB file (with predictions in B-factor)")
+    parser.add_argument("--cluster", action="store_true", help="Run HDBSCAN clustering on predictions and write cluster IDs to occupancy")
+    parser.add_argument("--cutoff", type=float, default=0.4, help="Probability cutoff for clustering (default: 0.4)")
+    parser.add_argument("--min-cluster-size", type=int, default=25, help="HDBSCAN min_cluster_size (default: 25)")
+    parser.add_argument("--min-samples", type=int, default=10, help="HDBSCAN min_samples (default: 10)")
+    parser.add_argument("--alpha", type=float, default=1.5, help="Probability weight in custom distance metric (default: 1.5)")
+    parser.add_argument("--visualize", action="store_true", help="Generate an HTML visualization of predictions and clusters")
+    parser.add_argument("--viz-style", choices=["sphere", "surface", "cartoon"], default="sphere", help="Visualization style (default: sphere)")
+    parser.add_argument("--viz-output", type=str, default=None, help="Output HTML file path (default: <output_basename>_viz.html)")
+    args = parser.parse_args()
+
+    device = torch.device(device)
+    # Setup models
+    model1 = Model(config_model).to(device)
+    ckpt1 = torch.load(args.model1, map_location=device, weights_only=True)
+    model1.load_state_dict(
+        ckpt1["model_state_dict"] if "model_state_dict" in ckpt1 else ckpt1
+    )
+    model1.eval()
+    model2 = SetModel(config_model).to(device)
+    ckpt2 = torch.load(args.model2, map_location=device, weights_only=True)
+    model2.load_state_dict(
+        ckpt2["model_state_dict"] if "model_state_dict" in ckpt2 else ckpt2
+    )
+    model2.eval()
+
+    pdb_file = args.input
+    out_file = args.output
+    os.makedirs(os.path.dirname(os.path.abspath(out_file)), exist_ok=True)
+
+    # Setup data
+    seq, xyz = get_xyz(pdb_file)
+    if seq is None:
+        raise ValueError(f"Could not parse any models from {pdb_file}")
+    seq = torch.tensor([aa_idx[r] for r in seq], dtype=torch.long)
+    # GNN
+    emb_list = []
+    for frame_idx in tqdm(range(len(xyz)), leave=False):
+        # Extract features
+        R, D, SCOV, SCOD, nn_ids = extract_topology_knn(
+            xyz, frame_idx=frame_idx, k=k
+        )
+        # Spherical harmonics
+        R = o3.spherical_harmonics(
+            "1x1e+1x2e", torch.tensor(R), normalize=True, normalization="component"
+        )
+        SCOD = o3.spherical_harmonics(
+            "1x1e+1x2e",
+            torch.tensor(SCOD),
+            normalize=True,
+            normalization="component",
+        )
+        SCOV = o3.spherical_harmonics(
+            "1x1e+1x2e",
+            torch.tensor(SCOV),
+            normalize=True,
+            normalization="component",
+        )
+        # Edge
+        num_nodes, k = nn_ids.shape
+        edge_src = torch.arange(num_nodes).unsqueeze(1).repeat(1, k).flatten()
+        edge_dst = torch.tensor(nn_ids.flatten())
+        with torch.no_grad():
+            if len(xyz) == 1:
+                z = model1(
+                    [
+                        [seq.to(device), SCOV.to(device)],
+                        [SCOD.to(device), R.to(device), torch.tensor(D).to(device)],
+                    ],
+                    edge_src.to(device),
+                    edge_dst.to(device),
+                    get_mor=False,
+                )
+            else:
+                emb = model1(
+                    [
+                        [seq.to(device), SCOV.to(device)],
+                        [SCOD.to(device), R.to(device), torch.tensor(D).to(device)],
+                    ],
+                    edge_src.to(device),
+                    edge_dst.to(device),
+                    get_mor=True,
+                )
+                emb_list.append(emb)
+    if len(xyz) > 1:
+        emb_list = torch.stack(emb_list, dim=1)
+        # evaluate with setmodel
+        z = model2.forward(emb_list)
+
+    probs = torch.sigmoid(z).detach().cpu().numpy().flatten()
+
+    # ── optional HDBSCAN clustering ────────────────────────────────────────────
+    cluster_ids = None
+    if args.cluster:
+        cluster_ids = cluster_predictions(
+            xyz[0],               # use first frame's CA/CB coords
+            probs,
+            cutoff=args.cutoff,
+            min_cluster_size=args.min_cluster_size,
+            min_samples=args.min_samples,
+            alpha=args.alpha,
+        )
+        n_clusters = len(set(cluster_ids) - {-1})
+        print(f"Clustering: {n_clusters} binding-site cluster(s) found "
+              f"({(cluster_ids == -1).sum()} residue(s) as noise)")
+
+    write_pdb_with_bfactor(pdb_file, probs, out_file, cluster_ids=cluster_ids)
+    print(f"Predictions written to {out_file}")
+
+    # ── optional HTML visualization ────────────────────────────────────────
+    if args.visualize:
+        if not args.cluster:
+            print("Warning: --visualize requires --cluster to produce a cluster view. "
+                  "Skipping visualization.")
+        else:
+            root, ext = os.path.splitext(out_file)
+            cluster_out_file = f"{root}_clusters{ext}"
+            viz_output = args.viz_output or f"{root}_viz.html"
+            render_pdb_html(out_file, cluster_out_file, viz_output,
+                            style=args.viz_style)
+            print(f"Visualization written to {viz_output}")
