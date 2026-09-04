@@ -395,11 +395,13 @@ print(f"Predictions written to {out_file}")
 
 
 def render_pdb_html(prob_pdb, cluster_pdb, output_html,
-                     colors=None, width=600, height=500):
+                     colors=None, width=600, height=500, style='sphere'):
     """
     Build a standalone HTML file with two side-by-side py3Dmol views:
       - left:  predicted probability (B-factor gradient)
       - right: cluster assignment (discrete colors, cluster 0 = noise = gray)
+
+    style: 'sphere', 'surface', or 'cartoon'
     """
     if colors is None:
         colors = [
@@ -428,28 +430,42 @@ def render_pdb_html(prob_pdb, cluster_pdb, output_html,
     # ── probability view ──────────────────────────────────────────────────
     view1 = py3Dmol.view(width=width, height=height)
     view1.addModel(prob_data, 'pdb')
-    view1.setStyle(
-        {},
-        {'sphere': {
-            'colorscheme': {
-                'prop': 'b',
-                'gradient': 'linear_#3939b8_#d3d4d4_#e93939',
-                'min': 0,
-                'max': 1
-            }
-        }}
-    )
+    if style == 'surface':
+        view1.setStyle({}, {'cartoon': {'colorscheme': {'prop': 'b', 'gradient': 'linear_#3939b8_#d3d4d4_#e93939', 'min': 0, 'max': 1}}})
+        view1.addSurface(py3Dmol.VDW, {'colorscheme': {'prop': 'b', 'gradient': 'linear_#3939b8_#d3d4d4_#e93939', 'min': 0, 'max': 1}})
+    else:
+        view1.setStyle(
+            {},
+            {style: {
+                'colorscheme': {
+                    'prop': 'b',
+                    'gradient': 'linear_#3939b8_#d3d4d4_#e93939',
+                    'min': 0,
+                    'max': 1
+                }
+            }}
+        )
     view1.zoomTo()
 
     # ── cluster view ─────────────────────────────────────────────────────
     view2 = py3Dmol.view(width=width, height=height)
     view2.addModel(cluster_data, 'pdb')
-    view2.setStyle({'b': 0}, {'sphere': {'color': '#808080'}})  # noise
-    for cid in cluster_vals:
-        if cid == 0:
-            continue
-        color = colors[(cid - 1) % len(colors)]
-        view2.addStyle({'b': cid}, {'sphere': {'color': color}})
+    if style == 'surface':
+        view2.setStyle({'b': 0}, {'cartoon': {'color': '#808080'}})
+        view2.addSurface(py3Dmol.VDW, {'color': '#808080'}, {'b': 0})
+        for cid in cluster_vals:
+            if cid == 0:
+                continue
+            color = colors[(cid - 1) % len(colors)]
+            view2.addStyle({'b': cid}, {'cartoon': {'color': color}})
+            view2.addSurface(py3Dmol.VDW, {'color': color}, {'b': cid})
+    else:
+        view2.setStyle({'b': 0}, {style: {'color': '#808080'}})  # noise
+        for cid in cluster_vals:
+            if cid == 0:
+                continue
+            color = colors[(cid - 1) % len(colors)]
+            view2.addStyle({'b': cid}, {style: {'color': color}})
     view2.zoomTo()
 
     html = f"""<!DOCTYPE html>
