@@ -19,7 +19,7 @@ from architecture.model_gnn import Model
 from architecture.model_set import SetModel
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
-print (f"{device} is being used...")
+print(f"{device} is being used...")
 
 k = 32
 aa_idx = {
@@ -395,7 +395,7 @@ print(f"Predictions written to {out_file}")
 
 
 def render_pdb_html(prob_pdb, cluster_pdb, output_html,
-                     colors=None, width=600, height=500, style='sphere'):
+                    colors=None, width=600, height=500, style='sphere'):
     """
     Build a standalone HTML file with two side-by-side py3Dmol views:
       - left:  predicted probability (B-factor gradient)
@@ -492,9 +492,10 @@ def render_pdb_html(prob_pdb, cluster_pdb, output_html,
     with open(output_html, "w") as f:
         f.write(html)
 
+
 cluster_out_file = None
 if cluster_ids is not None:
     root, ext = os.path.splitext(out_file)
     cluster_out_file = f"{root}_clusters{ext}"
 render_pdb_html(out_file, cluster_out_file, "viz.html")
-print(f"Visualization written to {html_out}")
+print("Visualization written to viz.html")
