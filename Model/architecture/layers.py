@@ -1,5 +1,7 @@
 # Copyright (c) 2026 Omid Mokhtari
 
+from functools import lru_cache
+
 import torch
 from e3nn import o3
 from e3nn.nn import Gate
@@ -156,21 +158,26 @@ class NodeMessageMixer(torch.nn.Module):
         return V
 
 
+@lru_cache(maxsize=None)
+def _cached_irreps_slices(irreps_str):
+    irreps = o3.Irreps(irreps_str)
+    return tuple(
+        (f"{ir.l}{ir.p}", slice_indices.start, slice_indices.stop)
+        for (_, ir), slice_indices in zip(irreps, irreps.slices())
+    )
+
+
 def split_irreps_tensor(tensor, irreps_str):
     """
     Split a tensor based on irreps using the built-in slices() method.
     """
-    irreps = o3.Irreps(irreps_str)
-    slices = irreps.slices()
-
-    # Create dictionary of tensors split by irrep type
     result = {}
-    for (mul, ir), slice_indices in zip(irreps, slices):
-        key = f"{ir.l}{ir.p}"
+    for key, start, stop in _cached_irreps_slices(str(irreps_str)):
+        field = tensor.narrow(1, start, stop - start)
         if key in result:
             # If we already have this irrep type, concatenate
-            result[key] = torch.cat([result[key], tensor[:, slice_indices]], dim=1)
+            result[key] = torch.cat([result[key], field], dim=1)
         else:
-            result[key] = tensor[:, slice_indices]
+            result[key] = field
 
     return result

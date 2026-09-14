@@ -10,7 +10,7 @@ from Bio.Data.PDBData import protein_letters_3to1_extended
 from Bio.PDB import PDBIO, PDBParser
 from e3nn import o3
 from hdbscan import HDBSCAN
-from sklearn.metrics import pairwise_distances
+from scipy.spatial import cKDTree
 from tqdm import tqdm
 import py3Dmol
 
@@ -144,13 +144,16 @@ def get_k_nearest_neighbors(xyz_ca, k):
     """Get k nearest neighbors indices for each residue"""
     n_residues = xyz_ca.shape[0]
     k = min(k, n_residues - 1)
-    # Pairwise distances
-    diff = xyz_ca[:, np.newaxis, :] - xyz_ca[np.newaxis, :, :]
-    distances = np.linalg.norm(diff, axis=-1)
-    # Exclude self
-    distances[np.arange(n_residues), np.arange(n_residues)] = np.inf
-    # Get k nearest
-    return np.argpartition(distances, k, axis=1)[:, :k]
+    if k <= 0:
+        return np.empty((n_residues, 0), dtype=np.int64)
+
+    # KD-tree query avoids materializing the full NxN distance matrix, which is
+    # noticeably faster and lighter for CPU inference on larger proteins.
+    _, indices = cKDTree(xyz_ca).query(xyz_ca, k=k + 1)
+    neighbors = np.empty((n_residues, k), dtype=np.int64)
+    for row_idx, row in enumerate(indices):
+        neighbors[row_idx] = row[row != row_idx][:k]
+    return neighbors
 
 
 def extract_topology_knn(xyz, frame_idx, k):
@@ -260,13 +263,10 @@ def cluster_predictions(xyz, probs, cutoff=0.4, min_cluster_size=25, min_samples
     sel_probs = probs[mask]   # [n_selected]
 
     # ── probability-weighted distance matrix ─────────────────────────────────
-    def metric(p, q):
-        p_coords, p_prob = p[:-1], p[-1]
-        q_coords, q_prob = q[:-1], q[-1]
-        return alpha / (p_prob * q_prob) + np.linalg.norm(p_coords - q_coords)
-
-    coords_with_probs = np.hstack((coords, sel_probs.reshape(-1, 1)))
-    dist = pairwise_distances(coords_with_probs, metric=metric)
+    coord_diff = coords[:, np.newaxis, :] - coords[np.newaxis, :, :]
+    spatial_dist = np.linalg.norm(coord_diff, axis=-1)
+    prob_dist = alpha / np.outer(sel_probs, sel_probs)
+    dist = (spatial_dist + prob_dist).astype(np.float64, copy=False)
 
     # ── HDBSCAN ──────────────────────────────────────────────────────────────
     clusterer = HDBSCAN(
@@ -428,60 +428,72 @@ if __name__ == "__main__":
     seq, xyz = get_xyz(pdb_file)
     if seq is None:
         raise ValueError(f"Could not parse any models from {pdb_file}")
-    seq = torch.tensor([aa_idx[r] for r in seq], dtype=torch.long)
+    seq = torch.tensor([aa_idx[r] for r in seq], dtype=torch.long, device=device)
     # GNN
     emb_list = []
-    for frame_idx in tqdm(range(len(xyz)), leave=False):
-        # Extract features
-        R, D, SCOV, SCOD, nn_ids = extract_topology_knn(
-            xyz, frame_idx=frame_idx, k=k
-        )
-        # Spherical harmonics
-        R = o3.spherical_harmonics(
-            "1x1e+1x2e", torch.tensor(R), normalize=True, normalization="component"
-        )
-        SCOD = o3.spherical_harmonics(
-            "1x1e+1x2e",
-            torch.tensor(SCOD),
-            normalize=True,
-            normalization="component",
-        )
-        SCOV = o3.spherical_harmonics(
-            "1x1e+1x2e",
-            torch.tensor(SCOV),
-            normalize=True,
-            normalization="component",
-        )
-        # Edge
-        num_nodes, k = nn_ids.shape
-        edge_src = torch.arange(num_nodes).unsqueeze(1).repeat(1, k).flatten()
-        edge_dst = torch.tensor(nn_ids.flatten())
-        with torch.no_grad():
+    with torch.inference_mode():
+        for frame_idx in tqdm(range(len(xyz)), leave=False):
+            # Extract features
+            R, D, SCOV, SCOD, nn_ids = extract_topology_knn(
+                xyz, frame_idx=frame_idx, k=k
+            )
+            R = torch.from_numpy(R).to(device=device, dtype=torch.float32)
+            D = torch.from_numpy(D).to(device=device, dtype=torch.float32)
+            SCOV = torch.from_numpy(SCOV).to(device=device, dtype=torch.float32)
+            SCOD = torch.from_numpy(SCOD).to(device=device, dtype=torch.float32)
+            nn_ids = torch.from_numpy(nn_ids).to(device=device, dtype=torch.long)
+
+            # Spherical harmonics
+            R = o3.spherical_harmonics(
+                "1x1e+1x2e", R, normalize=True, normalization="component"
+            )
+            SCOD = o3.spherical_harmonics(
+                "1x1e+1x2e",
+                SCOD,
+                normalize=True,
+                normalization="component",
+            )
+            SCOV = o3.spherical_harmonics(
+                "1x1e+1x2e",
+                SCOV,
+                normalize=True,
+                normalization="component",
+            )
+            # Edge
+            num_nodes, num_neighbors = nn_ids.shape
+            edge_src = (
+                torch.arange(num_nodes, device=device)
+                .unsqueeze(1)
+                .expand(num_nodes, num_neighbors)
+                .reshape(-1)
+            )
+            edge_dst = nn_ids.reshape(-1)
+
             if len(xyz) == 1:
                 z = model1(
                     [
-                        [seq.to(device), SCOV.to(device)],
-                        [SCOD.to(device), R.to(device), torch.tensor(D).to(device)],
+                        [seq, SCOV],
+                        [SCOD, R, D],
                     ],
-                    edge_src.to(device),
-                    edge_dst.to(device),
+                    edge_src,
+                    edge_dst,
                     get_mor=False,
                 )
             else:
                 emb = model1(
                     [
-                        [seq.to(device), SCOV.to(device)],
-                        [SCOD.to(device), R.to(device), torch.tensor(D).to(device)],
+                        [seq, SCOV],
+                        [SCOD, R, D],
                     ],
-                    edge_src.to(device),
-                    edge_dst.to(device),
+                    edge_src,
+                    edge_dst,
                     get_mor=True,
                 )
                 emb_list.append(emb)
-    if len(xyz) > 1:
-        emb_list = torch.stack(emb_list, dim=1)
-        # evaluate with setmodel
-        z = model2.forward(emb_list)
+        if len(xyz) > 1:
+            emb_list = torch.stack(emb_list, dim=1)
+            # evaluate with setmodel
+            z = model2.forward(emb_list)
 
     probs = torch.sigmoid(z).detach().cpu().numpy().flatten()
 
