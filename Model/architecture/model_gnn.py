@@ -47,7 +47,7 @@ class Model(torch.nn.Module):
 
         if get_mor==False:
             # Decoding Layer
-            dwtp_output = self.dwtp_decode(node_features=X_n, edge_attr=X_n)
+            dwtp_output = self.dwtp_decode(X_n, X_n)
             X_n = self.decode_mlp(dwtp_output)
 
         return X_n
