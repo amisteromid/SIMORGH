@@ -96,3 +96,14 @@ Developed at Inria.
 Copyright © 2026 Omid Mokhtari.
 
 ## **Citation**
+
+@UNPUBLISHED{Mokhtari2026-SIMORGH,
+  title       = "{SIMORGH}: Ensemble-aware geometric deep learning for
+                 {APO-state} and cryptic ligand binding site prediction",
+  author      = "Mokhtari, Omid and Naghsh Nilchi, Amirhossein and Gr{\"u}ning,
+                 Bj{\"o}rn and Karami, Yasaman and Khakzad, Hamed",
+  journal     = "bioRxiv",
+  month       =  oct,
+  year        =  2026,
+  copyright   = "http://creativecommons.org/licenses/by-nd/4.0/"
+}
